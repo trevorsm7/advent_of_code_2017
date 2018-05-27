@@ -2,11 +2,13 @@ use std::fs;
 use std::cmp;
 use std::env;
 
-fn part1(input: &String) -> u32 {
+fn part1(input: &str) -> u32 {
     // Sum the differences over each line
     input.lines().fold(0, |sum, line| {
         // Parse the line into u32 tokens
-        let numbers = line.split_whitespace().map(|tok| tok.parse::<u32>().expect("expected a number"));
+        let numbers = line
+            .split_whitespace()
+            .map(|tok| tok.parse::<u32>().expect("expected a number"));
 
         // Accumulate min and max over the line
         let (min, max) = {
@@ -15,7 +17,34 @@ fn part1(input: &String) -> u32 {
         };
 
         // Add the difference to the sum
-        sum + max - min
+        if max >= min {sum + max - min} else {sum}
+    })
+}
+
+fn part2(input: &str) -> u32 {
+    // Sum the divisions over each line
+    input.lines().fold(0, |sum, line| {
+        // Parse the line into u32 tokens
+        let numbers: Vec<u32> = line
+            .split_whitespace()
+            .map(|tok| tok.parse::<u32>().expect("expected a number"))
+            .collect();
+
+        // Iterate over each pair of numbers
+        for (i, a) in numbers.iter().enumerate() {
+            for b in numbers.iter().skip(i + 1) {
+                // If we match a pair, add it to the sum
+                return sum + match (a, b) {
+                    (a, b) if a % b == 0 => (a / b) as u32,
+                    (a, b) if b % a == 0 => (b / a) as u32,
+                    _ => continue
+                }
+            }
+        }
+
+        // If we never found a match, just return the sum
+        println!("Warning: failed to match line {}", line);
+        sum
     })
 }
 
@@ -27,6 +56,7 @@ fn main() -> Result<(), std::io::Error> {
     };
 
     println!("Part 1: {}", part1(&input));
+    println!("Part 2: {}", part2(&input));
 
     Ok(())
 }
