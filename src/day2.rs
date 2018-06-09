@@ -1,6 +1,8 @@
 use std::fs;
 use std::cmp;
 use std::env;
+use std::io;
+use std::u32;
 
 fn part1(input: &str) -> u32 {
     // Sum the differences over each line
@@ -12,7 +14,7 @@ fn part1(input: &str) -> u32 {
 
         // Accumulate min and max over the line
         let (min, max) = {
-            let max_min = (std::u32::MAX, std::u32::MIN);
+            let max_min = (u32::MAX, u32::MIN);
             numbers.fold(max_min, |acc, n| (cmp::min(acc.0, n), cmp::max(acc.1, n)))
         };
 
@@ -48,10 +50,10 @@ fn part2(input: &str) -> u32 {
     })
 }
 
-fn main() -> Result<(), std::io::Error> {
+pub fn day2(args: &mut env::Args) -> Result<(), io::Error> {
     // Read from file in first arg or default to input.txt
     let input = {
-        let name = env::args().skip(1).next().unwrap_or("day2.txt".to_string());
+        let name = args.next().unwrap_or("input/day2.txt".to_string());
         fs::read_to_string(name)?
     };
 

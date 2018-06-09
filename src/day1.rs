@@ -1,10 +1,13 @@
+use std::iter::Iterator;
+use std::env::Args;
+use std::io::Error;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
 use std::iter::Peekable;
 
 fn peek_or<T>(iter: &mut Peekable<T>, alt: u32) -> u32
-    where T: std::iter::Iterator<Item=char> {
+    where T: Iterator<Item=char> {
     iter.peek().map_or(Some(alt), |ch| ch.to_digit(10)).unwrap_or(alt)
 }
 
@@ -93,11 +96,11 @@ fn part2_zip(input: &String) -> u32 {
     iter1.zip(iter2).fold(0, |sum, (digit, next)| if digit == next {sum + digit} else {sum})
 }
 
-fn main() {
+pub fn day1(args: &mut Args) -> Result<(), Error> {
     // Open file in first arg or default to input.txt
     let mut file = {
-        let name = std::env::args().skip(1).next().unwrap_or("day1.txt".to_string());
-        File::open(Path::new(&name)).expect("failed to open file")
+        let name = args.next().unwrap_or("input/day1.txt".to_string());
+        File::open(Path::new(&name))?
     };
 
     // File length is u64 but with_capacity takes usize!
@@ -107,7 +110,7 @@ fn main() {
     };
 
     // Read file into string, truncating whitespace
-    file.read_to_string(&mut input).expect("failed to read from file");
+    file.read_to_string(&mut input)?;
     let len = input.trim_right().len();
     input.truncate(len);
 
@@ -116,4 +119,6 @@ fn main() {
     println!("Part 1 (scan): {}", part1_scan(&input));
     println!("Part 2 (vec): {}", part2_vec(&input));
     println!("Part 2 (zip): {}", part2_zip(&input));
+
+    Ok(())
 }

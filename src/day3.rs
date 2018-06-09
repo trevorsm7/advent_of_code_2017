@@ -1,5 +1,7 @@
 use std::env;
 use std::mem;
+use std::io;
+use std::process::exit;
 
 fn part1(input: u32) -> u32 {
     // Handle trivial case
@@ -105,14 +107,18 @@ fn part2(input: u32) -> u32 {
     };
 }
 
-fn main() -> Result<(), std::io::Error> {
+pub fn day3(args: &mut env::Args) -> Result<(), io::Error> {
     // Expect input to be passed as first arg
-    let input = env::args()
-        .skip(1)
+    let input = args
         .next()
-        .expect("expected argument")
+        .unwrap_or("0".to_string())
         .parse()
-        .expect("expected argument to be a number");
+        .unwrap_or(0);
+
+    if input <= 0 {
+        println!("Expected numeric input");
+        exit(1);
+    }
 
     println!("Part 1: {}", part1(input));
     println!("Part 2: {}", part2(input));
