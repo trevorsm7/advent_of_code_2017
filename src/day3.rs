@@ -31,6 +31,14 @@ fn part1(input: u32) -> u32 {
     radius + tangent
 }
 
+#[test]
+fn test_part1() {
+    assert_eq!(part1(1), 0);
+    assert_eq!(part1(12), 3);
+    assert_eq!(part1(23), 2);
+    assert_eq!(part1(1024), 31)
+}
+
 fn part2(input: u32) -> u32 {
     // Initialize the inner ring to a single 1
     let mut inner = vec![1];
@@ -105,6 +113,15 @@ fn part2(input: u32) -> u32 {
         outer.clear();
         ring += 1;
     };
+}
+
+#[test]
+fn test_part2() {
+    assert_eq!(part2(4), 5);
+    assert_eq!(part2(11), 23);
+    assert_eq!(part2(25), 26);
+    assert_eq!(part2(26), 54);
+    assert_eq!(part2(747), 806);
 }
 
 pub fn day3(args: &mut env::Args) -> Result<(), io::Error> {

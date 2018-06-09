@@ -23,6 +23,14 @@ fn part1(input: &str) -> u32 {
     })
 }
 
+#[test]
+fn test_part1() {
+    assert_eq!(part1("5 1 9 5"), 8);
+    assert_eq!(part1("7 5 3"), 4);
+    assert_eq!(part1("2 4 6 8"), 6);
+    assert_eq!(part1("5 1 9 5\n7 5 3\n2 4 6 8"), 18)
+}
+
 fn part2(input: &str) -> u32 {
     // Sum the divisions over each line
     input.lines().fold(0, |sum, line| {
@@ -48,6 +56,14 @@ fn part2(input: &str) -> u32 {
         println!("Warning: failed to match line {}", line);
         sum
     })
+}
+
+#[test]
+fn test_part2() {
+    assert_eq!(part2("5 9 2 8"), 4);
+    assert_eq!(part2("9 4 7 3"), 3);
+    assert_eq!(part2("3 8 6 5"), 2);
+    assert_eq!(part2("5 9 2 8\n9 4 7 3\n3 8 6 5"), 9)
 }
 
 pub fn day2(args: &mut env::Args) -> Result<(), io::Error> {
