@@ -31,6 +31,38 @@ fn test_day5_part1() {
     assert_eq!(part1("0 3 0 1 -3"), 5);
 }
 
+fn part2(tokens: &str) -> u32 {
+    // Parse the line into u32 tokens
+    let mut jumps: Vec<i32> = tokens
+        .split_whitespace()
+        .map(|tok| tok.parse::<i32>().expect("expected a number"))
+        .collect();
+
+    let mut index = 0;
+    let mut count = 0;
+
+    // Loop until index leaves table
+    while index >= 0 && index < jumps.len() as i32 {
+        // Compute the next index
+        let offset = &mut jumps[index as usize];
+        let new_index = index + *offset;
+
+        // Decrement if offset is 3 or more, otherwise increment
+        *offset += if *offset >= 3 { -1 } else { 1 };
+
+        // Jump and increment the jump count
+        index = new_index;
+        count = count + 1;
+    }
+
+    count
+}
+
+#[test]
+fn test_day5_part2() {
+    assert_eq!(part2("0 3 0 1 -3"), 10);
+}
+
 pub fn day5(args: &mut env::Args) -> Result<(), io::Error> {
     // Read from file in first arg or default to input.txt
     let input = {
@@ -39,7 +71,7 @@ pub fn day5(args: &mut env::Args) -> Result<(), io::Error> {
     };
 
     println!("Part 1: {}", part1(&input));
-    //println!("Part 2: {}", part2(&input));
+    println!("Part 2: {}", part2(&input));
 
     Ok(())
 }
