@@ -28,7 +28,8 @@ type TowerMap = HashMap<String, Tower>;
 
 trait HashMapExt {
     fn from_input(input: &str) -> TowerMap;
-    fn find_parent(&self) -> String;
+    fn find_root(&self) -> String;
+    fn find_imbalance(&self, &str) -> Result<(u32, u32), u32>;
 }
 
 impl HashMapExt for TowerMap {
@@ -59,9 +60,9 @@ impl HashMapExt for TowerMap {
         tower_map
     }
 
-    fn find_parent(&self) -> String {
+    fn find_root(&self) -> String {
         let mut towers = self.clone();
-        let mut all_children = Vec::new();
+        let mut all_children = Vec::with_capacity(self.len());
 
         // Record all names referenced as children
         for tower in towers.values() {
@@ -79,12 +80,55 @@ impl HashMapExt for TowerMap {
         assert_eq!(towers.len(), 1);
         towers.keys().next().unwrap().to_string()
     }
+
+    fn find_imbalance(&self, root_name: &str) -> Result<(u32, u32), u32> {
+        // Get the root tower
+        let tower = self.get(root_name).unwrap();
+
+        // A state machine to find a consensus between values
+        enum Consensus<T> {
+            None,
+            Propose((T, T)),
+            Disagree(((T, T), (T, T))),
+            Agree(T)
+        }
+
+        // Sum weight over each child
+        let mut sum_children = 0;
+        let mut consensus = Consensus::None;
+        for name in &tower.children {
+            // Return immediately if we found an imbalance
+            let weights = self.find_imbalance(name)?;
+            let total = weights.0 + weights.1;
+            sum_children += total;
+
+            // Update the state machine, looking for an imbalance
+            consensus = match consensus {
+                Consensus::None => Consensus::Propose(weights),
+                Consensus::Propose(w) if (w.0 + w.1) == total => Consensus::Agree(total),
+                Consensus::Propose(other) => Consensus::Disagree((other, weights)),
+                Consensus::Agree(w) if w == total => Consensus::Agree(w),
+                Consensus::Agree(w) => return Err(w - weights.1),
+                Consensus::Disagree((a, b)) if (a.0 + a.1) == total => return Err(total - b.1),
+                Consensus::Disagree((a, b)) if (b.0 + b.1) == total => return Err(total - a.1),
+                Consensus::Disagree(_) => panic!("multiple imbalances detected"),
+            }
+        }
+
+        // Just panic if we're unable to resolve which child is imbalanced
+        if let Consensus::Disagree(_) = consensus {
+            panic!("unable to resolve imbalance");
+        }
+
+        Ok((tower.weight, sum_children))
+    }
 }
 
 fn dewit(input: &str) -> (String, u32) {
     let towers = TowerMap::from_input(input);
-    let parent = towers.find_parent();
-    (parent, 50)
+    let root = towers.find_root();
+    let weight = towers.find_imbalance(&root).unwrap_err();
+    (root, weight)
 }
 
 #[test]
