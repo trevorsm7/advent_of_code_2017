@@ -2,10 +2,12 @@ use std::fs;
 use std::env;
 use std::io;
 use std::ops::{Add, Sub};
+use std::cmp::max;
 use std::collections::HashMap;
 
-fn part1(input: &str) -> i32 {
+fn dewit(input: &str) -> (i32, i32) {
     let mut regs = HashMap::new();
+    let mut max_value = 0;
 
     // Parse the input line-by-line
     for line in input.lines() {
@@ -39,23 +41,28 @@ fn part1(input: &str) -> i32 {
 
         // Evaluate the instruction
         if cond(&left, &right) {
-            let old = *regs.get(name).unwrap_or(&0);
-            regs.insert(name, op(old, amount));
+            // Update the register value
+            let mut value = *regs.get(name).unwrap_or(&0);
+            value = op(value, amount);
+            regs.insert(name, value);
+
+            // Record the max value seen
+            max_value = max(max_value, value);
         }
     }
 
-    // Return the largest register value
-    *regs.values().max().unwrap()
+    // Return the current largest value and the largest value seen
+    (*regs.values().max().unwrap(), max_value)
 }
 
 #[test]
-fn test_day8_part1() {
+fn test_day8() {
     let input =
 "b inc 5 if a > 1
 a inc 1 if b < 5
 c dec -10 if a >= 1
 c inc -20 if c == 10";
-    assert_eq!(part1(&input), 1);
+    assert_eq!(dewit(&input), (1, 10));
 }
 
 pub fn day8(args: &mut env::Args) -> Result<(), io::Error> {
@@ -65,7 +72,8 @@ pub fn day8(args: &mut env::Args) -> Result<(), io::Error> {
         fs::read_to_string(name)?
     };
 
-    println!("Part 1: {}", part1(&input));
+    let (part1, part2) = dewit(&input);
+    println!("Part 1: {}\nPart 2: {}", part1, part2);
 
     Ok(())
 }
