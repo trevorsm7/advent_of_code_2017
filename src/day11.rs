@@ -23,8 +23,10 @@ impl ops::Add for HexCoord {
     }
 }
 
-fn part1(input: &str) -> usize {
-    input
+fn dewit(input: &str) -> (usize, usize) {
+    let mut max = 0;
+
+    let dist = input
         // Trim and split tokens
         .trim_right()
         .split(',')
@@ -39,17 +41,23 @@ fn part1(input: &str) -> usize {
             _ => panic!(format!("Invalid token '{}'", tok)),
         })
         // Sum each step to get the new position
-        .fold(HexCoord(0, 0), |pos, step| pos + step)
+        .fold(HexCoord(0, 0), |pos, step| {
+            let pos = pos + step;
+            max = max.max(pos.distance());
+            pos
+        })
         // Return the absolute number of steps from the origin
-        .distance()
+        .distance();
+
+    (dist, max)
 }
 
 #[test]
-fn test_day11_part1() {
-    assert_eq!(part1("ne,ne,ne"), 3);
-    assert_eq!(part1("ne,ne,sw,sw"), 0);
-    assert_eq!(part1("ne,ne,s,s"), 2);
-    assert_eq!(part1("se,sw,se,sw,sw"), 3);
+fn test_day11() {
+    assert_eq!(dewit("ne,ne,ne"), (3, 3));
+    assert_eq!(dewit("ne,ne,sw,sw"), (0, 2));
+    assert_eq!(dewit("ne,ne,s,s"), (2, 2));
+    assert_eq!(dewit("se,sw,se,sw,sw"), (3, 3));
 }
 
 pub fn day11(args: &mut env::Args) -> Result<(), io::Error> {
@@ -59,7 +67,8 @@ pub fn day11(args: &mut env::Args) -> Result<(), io::Error> {
         fs::read_to_string(name)?
     };
 
-    println!("Part 1: {}", part1(&input));
+    let (part1, part2) = dewit(&input);
+    println!("Part 1: {}\nPart 2: {}", part1, part2);
 
     Ok(())
 }
