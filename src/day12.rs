@@ -3,11 +3,14 @@ use std::env;
 use std::io;
 
 use std::collections::{BTreeMap, BTreeSet};
+type Graph = BTreeMap<usize, Vec<usize>>;
+type Reachable = BTreeSet<usize>;
 
-fn part1(input: &str) -> usize {
-    let mut map: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+// Build the graph of pipes
+fn build_graph(input: &str) -> Graph {
+    let mut graph = Graph::new();
 
-    // Build the map of pipes
+    // For each line of input...
     for line in input.lines() {
         // Filter whitepsace and punctuation
         let mut iter = line
@@ -17,23 +20,34 @@ fn part1(input: &str) -> usize {
         // Parse PID and its neighbors
         let pid = iter.next().unwrap().parse().unwrap();
         let pipes: Vec<usize> = iter.map(|tok| tok.parse().unwrap()).collect();
-        map.insert(pid, pipes);
+        graph.insert(pid, pipes);
     }
 
-    let mut to_visit = vec![0];
-    let mut reachable = BTreeSet::new();
+    graph
+}
 
-    // Build the set of reachable programs
+// Build the set of reachable programs
+fn build_reachable(graph: &Graph, from: usize) -> Reachable {
+    let mut reachable = Reachable::new();
+
+    // Do DFS starting at node `from`
+    let mut to_visit = vec![from];
     while !to_visit.is_empty() {
         // Visit the node on top of the stack
         let pid = to_visit.pop().unwrap();
         if reachable.insert(pid) {
-            // Push reachable nodes on top of stack (DFS)
-            let v = map.get(&pid).unwrap();
+            // Push reachable nodes on top of stack
+            let v = graph.get(&pid).unwrap();
             to_visit.extend_from_slice(&v);
         }
     }
 
+    reachable
+}
+
+fn part1(input: &str) -> usize {
+    let graph = build_graph(input);
+    let reachable = build_reachable(&graph, 0);
     reachable.len()
 }
 
