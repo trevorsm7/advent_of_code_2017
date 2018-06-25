@@ -19,7 +19,7 @@ fn build_graph(input: &str) -> Graph {
 
         // Parse PID and its neighbors
         let pid = iter.next().unwrap().parse().unwrap();
-        let pipes: Vec<usize> = iter.map(|tok| tok.parse().unwrap()).collect();
+        let pipes = iter.map(|tok| tok.parse().unwrap()).collect();
         graph.insert(pid, pipes);
     }
 
@@ -45,10 +45,30 @@ fn build_reachable(graph: &Graph, from: usize) -> Reachable {
     reachable
 }
 
-fn part1(input: &str) -> usize {
+fn dewit(input: &str) -> (usize, usize) {
     let graph = build_graph(input);
-    let reachable = build_reachable(&graph, 0);
-    reachable.len()
+
+    // Count the nodes reachable from PID 0
+    let mut reachable = build_reachable(&graph, 0);
+    let first_len = reachable.len();
+
+    let mut group_count = 0;
+
+    // Remove each reachable set from the set of all keys, one at a time
+    let mut remainder: Reachable = graph.keys().cloned().collect();
+    loop {
+        // Remove the reachable nodes and increment count
+        remainder = remainder.difference(&reachable).cloned().collect();
+        group_count += 1;
+
+        if remainder.is_empty() {
+            return (first_len, group_count);
+        }
+
+        // Get a PID, then find the next set of reachable nodes
+        let pid = *remainder.iter().next().unwrap();
+        reachable = build_reachable(&graph, pid);
+    }
 }
 
 #[test]
@@ -61,7 +81,7 @@ fn test_day12() {
         4 <-> 2, 3, 6
         5 <-> 6
         6 <-> 4, 5";
-    assert_eq!(part1(&input), 6);
+    assert_eq!(dewit(&input), (6, 2));
 }
 
 pub fn day12(args: &mut env::Args) -> Result<(), io::Error> {
@@ -71,7 +91,8 @@ pub fn day12(args: &mut env::Args) -> Result<(), io::Error> {
         fs::read_to_string(name)?
     };
 
-    println!("Part 1: {}", part1(&input));
+    let (part1, part2) = dewit(&input);
+    println!("Part 1: {}\nPart 2: {}", part1, part2);
 
     Ok(())
 }
