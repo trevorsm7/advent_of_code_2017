@@ -3,40 +3,7 @@ use std::env;
 use std::io;
 use std::collections::BTreeMap;
 
-#[derive(Copy, Clone)]
-struct Scanner {
-    range: usize,
-    offset: usize,
-}
-
-impl Scanner {
-    fn with_range(range: usize) -> Self {
-        Self { range, offset: 0 }
-    }
-
-    fn update(&mut self, steps: usize) {
-        // Combine direction and layer into a single variable
-        // [0, range-1) is forward, [range-1, 2*(range-1)) is reverse
-        // This makes it trivial to take a large number of steps in a single update
-        self.offset += steps;
-        self.offset %= (self.range - 1) * 2;
-    }
-
-    #[allow(dead_code)]
-    fn position(&self) -> usize {
-        if self.offset >= self.range {
-            // Map the reverse range to the actual position
-            (self.range - 1) * 2 - self.offset
-        }
-        else { self.offset }
-    }
-
-    fn at_top(&self) -> bool {
-        self.offset == 0
-    }
-}
-
-type Firewall = BTreeMap<usize, Scanner>;
+type Firewall = BTreeMap<usize, usize>;
 
 trait FirewallExt {
     fn from_str(input: &str) -> Self;
@@ -56,22 +23,21 @@ impl FirewallExt for Firewall {
             // Each line should have depth and range
             let depth = iter.next().unwrap().parse().unwrap();
             let range = iter.next().unwrap().parse().unwrap();
-            firewall.insert(depth, Scanner::with_range(range));
+            firewall.insert(depth, range);
         }
 
         firewall
     }
 }
 
-fn part1(input: &str) -> usize {
-    let mut firewall = Firewall::from_str(input);
-
+fn part1(firewall: &Firewall) -> usize {
     let mut severity = 0;
-    for (&depth, scanner) in firewall.iter_mut() {
-        // Update scanner to when our packet enters the layer
-        scanner.update(depth);
-        if scanner.at_top() {
-            severity += depth * scanner.range;
+    for (&depth, &range) in firewall.iter() {
+        // Update scanner to when our packet enters the layer (depth mod cycle length)
+        // If the scanner is at the top of the layer, we're caught
+        let cycle = (range - 1) * 2;
+        if depth % cycle == 0 {
+            severity += depth * range;
         }
     }
 
@@ -85,7 +51,8 @@ fn test_day13() {
          1: 2
          4: 4
          6: 4";
-    assert_eq!(part1(&input), 24);
+    let firewall = Firewall::from_str(&input);
+    assert_eq!(part1(&firewall), 24);
 }
 
 pub fn day13(args: &mut env::Args) -> Result<(), io::Error> {
@@ -95,7 +62,8 @@ pub fn day13(args: &mut env::Args) -> Result<(), io::Error> {
         fs::read_to_string(name)?
     };
 
-    println!("Part 1: {}", part1(&input));
+    let firewall = Firewall::from_str(&input);
+    println!("Part 1: {}", part1(&firewall));
 
     Ok(())
 }
