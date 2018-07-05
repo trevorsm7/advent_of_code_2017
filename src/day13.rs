@@ -30,6 +30,7 @@ impl FirewallExt for Firewall {
     }
 }
 
+// Step through the firewall, computing the severity of the trip
 fn part1(firewall: &Firewall) -> usize {
     let mut severity = 0;
     for (&depth, &range) in firewall.iter() {
@@ -44,6 +45,28 @@ fn part1(firewall: &Firewall) -> usize {
     severity
 }
 
+// Compute the delay required to traverse the firewall without getting caught
+fn part2(firewall: &Firewall) -> usize {
+    // As-is, we will loop infinitely if there is no solution
+    // I think we could detect failure if delay >= the LCM of all ranges?
+    let mut delay = 0;
+    'top: loop {
+        for (&depth, &range) in firewall.iter() {
+            // Update scanner to when our packet enters the layer (depth mod cycle length)
+            // If the scanner is at the top of the layer, we're caught
+            let cycle = (range - 1) * 2;
+            if (delay + depth) % cycle == 0 {
+                // Increment the delay and start over
+                delay += 1;
+                continue 'top;
+            }
+        }
+
+        // We got through without getting caught!
+        return delay
+    }
+}
+
 #[test]
 fn test_day13() {
     let input =
@@ -53,6 +76,7 @@ fn test_day13() {
          6: 4";
     let firewall = Firewall::from_str(&input);
     assert_eq!(part1(&firewall), 24);
+    assert_eq!(part2(&firewall), 10);
 }
 
 pub fn day13(args: &mut env::Args) -> Result<(), io::Error> {
@@ -64,6 +88,7 @@ pub fn day13(args: &mut env::Args) -> Result<(), io::Error> {
 
     let firewall = Firewall::from_str(&input);
     println!("Part 1: {}", part1(&firewall));
+    println!("Part 2: {}", part2(&firewall));
 
     Ok(())
 }
