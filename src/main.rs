@@ -13,6 +13,7 @@ mod day12;
 mod day13;
 mod day14;
 mod day15;
+mod day16;
 
 use std::error::Error;
 use std::process::exit;
@@ -46,6 +47,7 @@ fn main() {
         13 => day13::day13(&mut args),
         14 => day14::day14(&mut args),
         15 => day15::day15(&mut args),
+        16 => day16::day16(&mut args),
         _ => {
             println!("Usage: {} day", name);
             exit(1);
