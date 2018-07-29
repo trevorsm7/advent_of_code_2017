@@ -46,9 +46,8 @@ fn apply_pattern(order: &mut Vec<u8>, input: &str) {
                 let pb = order.iter().position(|&n| n == b).unwrap();
 
                 // Swap the elements
-                let tmp = order[pa];
-                order[pa] = order[pb];
-                order[pb] = tmp;
+                order[pa] = b;
+                order[pb] = a;
             },
             _ => panic!("invalid command"),
         }
