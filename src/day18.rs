@@ -93,6 +93,7 @@ struct Machine {
     pc: Int,
     regs: [Int; 26],
     send: VecDeque<Int>,
+    count: u32,
 }
 
 impl Machine {
@@ -103,6 +104,7 @@ impl Machine {
             pc: 0,
             regs: [0; 26],
             send: VecDeque::new(),
+            count: 0,
         }
     }
 
@@ -124,44 +126,53 @@ impl Machine {
     }
 
     fn send(&mut self, op: Op) {
+        self.count += 1;
         // See this link for why a temp is required here; this may be fixed in the future!
-        // https://internals.rust-lang.org/t/accepting-nested-method-calls-with-an-mut-self-receiver/4588
+        // https://internals.rust-lang.org/t/accepting-nested-method-calls-with-an-mut-self-receiver
         let value = self.read(op);
         self.send.push_back(value);
     }
 
-    fn run_yield(&mut self, program: &Program) -> Result<Option<Reg>, Error> {
+    fn is_running(&mut self, program: &Program) -> bool {
         let len = program.len() as Int;
+        self.pc >= 0 && self.pc < len
+    }
 
-        // Execute while the pc is valid
-        while self.pc >= 0 && self.pc < len {
-            match &program[self.pc as usize] {
-                Inst::SND(op) => self.send(*op),
-                Inst::SET(reg, op) => *self.rw(*reg) = self.read(*op),
-                Inst::ADD(reg, op) => *self.rw(*reg) += self.read(*op),
-                Inst::MUL(reg, op) => *self.rw(*reg) *= self.read(*op),
-                Inst::MOD(reg, op) => *self.rw(*reg) %= self.read(*op),
-                Inst::RCV(reg) => return Ok(Some(*reg)), // yield, returning register
-                Inst::JGZ(op1, op2) => {
-                    if self.read(*op1) > 0 {
-                        self.pc += self.read(*op2);
-                        continue;
-                    }
+    fn run_yielding(&mut self, program: &Program) -> Result<Option<Reg>, Error> {
+        while self.is_running(&program) {
+            let inst = program[self.pc as usize];
+
+            // Handle jump first
+            if let Inst::JGZ(op1, op2) = inst {
+                if self.read(op1) > 0 {
+                    self.pc += self.read(op2);
+                    continue;
                 }
             }
 
+            // Otherwise, increment PC by 1
             self.pc += 1;
+
+            // Then handle remaining instructions
+            match inst {
+                Inst::SND(op) => self.send(op),
+                Inst::SET(reg, op) => *self.rw(reg) = self.read(op),
+                Inst::ADD(reg, op) => *self.rw(reg) += self.read(op),
+                Inst::MUL(reg, op) => *self.rw(reg) *= self.read(op),
+                Inst::MOD(reg, op) => *self.rw(reg) %= self.read(op),
+                Inst::RCV(reg) => return Ok(Some(reg)), // yield
+                _ => (),
+            }
         }
 
-        // Return none if the program terminates without yielding
-        Ok(None)
+        Ok(None) // terminate
     }
 }
 
 fn part1(program: &Program) -> Result<Int, Error> {
     let mut machine = Machine::new();
 
-    if let None = machine.run_yield(&program)? {
+    if let None = machine.run_yielding(&program)? {
         return Err(Error::new(ErrorKind::Other, "Never reached RCV instruction"));
     }
 
@@ -197,6 +208,62 @@ fn test_day18_part1() {
     }
 }
 
+fn part2(program: &Program) -> Result<u32, Error> {
+    // Initialize two machines with PID 0 and 1
+    let mut machine0 = Machine::with_pid(0);
+    let mut machine1 = Machine::with_pid(1);
+
+    // Run each program until their first yield
+    let mut yield0 = machine0.run_yielding(&program)?;
+    let mut yield1 = machine1.run_yielding(&program)?;
+
+    // While at least one program is running and not deadlocked
+    // TODO try this with real threads
+    loop {
+        if machine0.is_running(&program) {
+            if let Some(msg) = machine1.send.pop_front() {
+                let reg = yield0.unwrap();
+                *machine0.rw(reg) = msg;
+                yield0 = machine0.run_yielding(&program)?;
+                continue;
+            }
+        }
+
+        if machine1.is_running(&program) {
+            if let Some(msg) = machine0.send.pop_front() {
+                let reg = yield1.unwrap();
+                *machine1.rw(reg) = msg;
+                yield1 = machine1.run_yielding(&program)?;
+                continue;
+            }
+        }
+
+        return Ok(machine1.count);
+    }
+}
+
+#[test]
+fn test_day18_part2() {
+    let input =
+        "snd 1
+        snd 2
+        snd p
+        rcv a
+        rcv b
+        rcv c
+        rcv d";
+
+    let result = || -> Result<(), Error> {
+        let program = parse_program(&input)?;
+        assert_eq!(part2(&program)?, 3);
+        Ok(())
+    }();
+
+    if let Err(e) = result {
+        panic!(format!("{}", e));
+    }
+}
+
 pub fn day18(args: &mut env::Args) -> Result<(), Error> {
     // Read from file in first arg or default to input.txt
     let input = {
@@ -206,6 +273,7 @@ pub fn day18(args: &mut env::Args) -> Result<(), Error> {
 
     let program = parse_program(&input)?;
     println!("Part 1: {}", part1(&program)?);
+    println!("Part 2: {}", part2(&program)?);
 
     Ok(())
 }
