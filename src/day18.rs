@@ -1,37 +1,31 @@
 use std::fs;
 use std::env;
 use std::io::{Error, ErrorKind};
+use std::collections::VecDeque;
 
 type Reg = u8;
 type Int = i64;
 
+#[derive(Copy, Clone, PartialEq)]
 enum Op {
     Reg(Reg),
     Int(Int),
 }
 
-impl Op {
-    fn read(&self, regs: &[Int; 26]) -> Int {
-        match self {
-            Op::Reg(reg) => regs[*reg as usize],
-            Op::Int(int) => *int,
-        }
-    }
-}
-
+#[derive(Copy, Clone, PartialEq)]
 enum Inst {
     SND(Op),
     SET(Reg, Op),
     ADD(Reg, Op),
     MUL(Reg, Op),
     MOD(Reg, Op),
-    RCV(Op),
+    RCV(Reg),
     JGZ(Op, Op),
 }
 
 type Program = Vec<Inst>;
 
-fn parse_op<'a, I>(tokens : &mut I) -> Result<Op, Error>
+fn parse_op<'a, I>(tokens: &mut I) -> Result<Op, Error>
     where I: Iterator<Item = &'a str> {
 
     // Take a token
@@ -56,7 +50,7 @@ fn parse_op<'a, I>(tokens : &mut I) -> Result<Op, Error>
     Err(Error::new(ErrorKind::InvalidData, format!("Expected operand, found {}", token)))
 }
 
-fn parse_reg<'a, I>(tokens : &mut I) -> Result<Reg, Error>
+fn parse_reg<'a, I>(tokens: &mut I) -> Result<Reg, Error>
     where I: Iterator<Item = &'a str> {
 
     // Parse an operand, expecting a register
@@ -85,7 +79,7 @@ fn parse_program(input: &str) -> Result<Program, Error> {
             "add" => Inst::ADD(parse_reg(&mut tokens)?, parse_op(&mut tokens)?),
             "mul" => Inst::MUL(parse_reg(&mut tokens)?, parse_op(&mut tokens)?),
             "mod" => Inst::MOD(parse_reg(&mut tokens)?, parse_op(&mut tokens)?),
-            "rcv" => Inst::RCV(parse_op(&mut tokens)?),
+            "rcv" => Inst::RCV(parse_reg(&mut tokens)?),
             "jgz" => Inst::JGZ(parse_op(&mut tokens)?, parse_op(&mut tokens)?),
             _ => return Err(Error::new(ErrorKind::InvalidData,
                 format!("Expected instruction, found {}", inst))),
@@ -95,38 +89,87 @@ fn parse_program(input: &str) -> Result<Program, Error> {
     Ok(program)
 }
 
-fn part1(program: &Program) -> Result<Int, Error> {
-    // Initialize registers
-    let mut pc : Int = 0;
-    let mut regs = [0; 26];
-    let mut snd = 0;
+struct Machine {
+    pc: Int,
+    regs: [Int; 26],
+    send: VecDeque<Int>,
+}
 
-    // Execute program
-    let len = program.len() as Int;
-    while pc >= 0 && pc < len {
-        match &program[pc as usize] {
-            Inst::SND(op) => { snd = op.read(&regs);},
-            Inst::SET(reg, op) => { regs[*reg as usize] = op.read(&regs); },
-            Inst::ADD(reg, op) => { regs[*reg as usize] += op.read(&regs); },
-            Inst::MUL(reg, op) => { regs[*reg as usize] *= op.read(&regs); },
-            Inst::MOD(reg, op) => { regs[*reg as usize] %= op.read(&regs); },
-            Inst::RCV(op) => {
-                if op.read(&regs) != 0 {
-                    return Ok(snd);
-                }
-            },
-            Inst::JGZ(op1, op2) => {
-                if op1.read(&regs) > 0 {
-                    pc += op2.read(&regs);
-                    continue;
-                }
-            }
+impl Machine {
+    const P: usize = ('p' as u8 - 'a' as u8) as usize;
+
+    fn new() -> Self {
+        Self {
+            pc: 0,
+            regs: [0; 26],
+            send: VecDeque::new(),
         }
-
-        pc += 1;
     }
 
-    Err(Error::new(ErrorKind::Other, "Never reached RCV instruction"))
+    fn with_pid(pid: Int) -> Self {
+        let mut machine = Self::new();
+        machine.regs[Self::P] = pid;
+        machine
+    }
+
+    fn read(&self, op: Op) -> Int {
+        match op {
+            Op::Reg(reg) => self.regs[reg as usize],
+            Op::Int(int) => int,
+        }
+    }
+
+    fn rw(&mut self, reg: Reg) -> &mut Int {
+        &mut self.regs[reg as usize]
+    }
+
+    fn send(&mut self, op: Op) {
+        // See this link for why a temp is required here; this may be fixed in the future!
+        // https://internals.rust-lang.org/t/accepting-nested-method-calls-with-an-mut-self-receiver/4588
+        let value = self.read(op);
+        self.send.push_back(value);
+    }
+
+    fn run_yield(&mut self, program: &Program) -> Result<Option<Reg>, Error> {
+        let len = program.len() as Int;
+
+        // Execute while the pc is valid
+        while self.pc >= 0 && self.pc < len {
+            match &program[self.pc as usize] {
+                Inst::SND(op) => self.send(*op),
+                Inst::SET(reg, op) => *self.rw(*reg) = self.read(*op),
+                Inst::ADD(reg, op) => *self.rw(*reg) += self.read(*op),
+                Inst::MUL(reg, op) => *self.rw(*reg) *= self.read(*op),
+                Inst::MOD(reg, op) => *self.rw(*reg) %= self.read(*op),
+                Inst::RCV(reg) => return Ok(Some(*reg)), // yield, returning register
+                Inst::JGZ(op1, op2) => {
+                    if self.read(*op1) > 0 {
+                        self.pc += self.read(*op2);
+                        continue;
+                    }
+                }
+            }
+
+            self.pc += 1;
+        }
+
+        // Return none if the program terminates without yielding
+        Ok(None)
+    }
+}
+
+fn part1(program: &Program) -> Result<Int, Error> {
+    let mut machine = Machine::new();
+
+    if let None = machine.run_yield(&program)? {
+        return Err(Error::new(ErrorKind::Other, "Never reached RCV instruction"));
+    }
+
+    if let Some(last_snd) = machine.send.back() {
+        return Ok(*last_snd);
+    }
+
+    Err(Error::new(ErrorKind::Other, "Never reached a SND instruction"))
 }
 
 #[test]
