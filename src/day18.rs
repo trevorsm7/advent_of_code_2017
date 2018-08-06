@@ -29,6 +29,8 @@ enum Inst {
     JGZ(Op, Op),
 }
 
+type Program = Vec<Inst>;
+
 fn parse_op<'a, I>(tokens : &mut I) -> Result<Op, Error>
     where I: Iterator<Item = &'a str> {
 
@@ -65,8 +67,8 @@ fn parse_reg<'a, I>(tokens : &mut I) -> Result<Reg, Error>
     }
 }
 
-fn part1(input: &str) -> Result<Int, Error> {
-    let mut program = Vec::new();
+fn parse_program(input: &str) -> Result<Program, Error> {
+    let mut program = Program::new();
 
     // Parse instructions line-by-line
     for line in input.trim().lines() {
@@ -90,16 +92,17 @@ fn part1(input: &str) -> Result<Int, Error> {
         })
     }
 
-    // Make program immutable and get the length
-    let program = program;
-    let len = program.len() as Int;
+    Ok(program)
+}
 
+fn part1(program: &Program) -> Result<Int, Error> {
     // Initialize registers
     let mut pc : Int = 0;
     let mut regs = [0; 26];
     let mut snd = 0;
 
     // Execute program
+    let len = program.len() as Int;
     while pc >= 0 && pc < len {
         match &program[pc as usize] {
             Inst::SND(op) => { snd = op.read(&regs);},
@@ -139,7 +142,16 @@ fn test_day18_part1() {
         jgz a -1
         set a 1
         jgz a -2";
-    assert_eq!(part1(&input).ok(), Some(4));
+
+    let result = || -> Result<(), Error> {
+        let program = parse_program(&input)?;
+        assert_eq!(part1(&program)?, 4);
+        Ok(())
+    }();
+
+    if let Err(e) = result {
+        panic!(format!("{}", e));
+    }
 }
 
 pub fn day18(args: &mut env::Args) -> Result<(), Error> {
@@ -149,7 +161,8 @@ pub fn day18(args: &mut env::Args) -> Result<(), Error> {
         fs::read_to_string(name)?
     };
 
-    println!("Part 1: {}", part1(&input)?);
+    let program = parse_program(&input)?;
+    println!("Part 1: {}", part1(&program)?);
 
     Ok(())
 }
