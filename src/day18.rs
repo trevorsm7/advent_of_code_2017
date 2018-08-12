@@ -1,7 +1,12 @@
 use std::fs;
 use std::env;
 use std::io::{Error, ErrorKind};
-use std::collections::VecDeque;
+use std::sync::mpsc;
+use std::sync::mpsc::{Sender, Receiver, TryRecvError};
+
+extern crate crossbeam;
+
+// ==== Operands and registers ====
 
 type Reg = u8;
 type Int = i64;
@@ -11,19 +16,6 @@ enum Op {
     Reg(Reg),
     Int(Int),
 }
-
-#[derive(Copy, Clone, PartialEq)]
-enum Inst {
-    SND(Op),
-    SET(Reg, Op),
-    ADD(Reg, Op),
-    MUL(Reg, Op),
-    MOD(Reg, Op),
-    RCV(Reg),
-    JGZ(Op, Op),
-}
-
-type Program = Vec<Inst>;
 
 fn parse_op<'a, I>(tokens: &mut I) -> Result<Op, Error>
     where I: Iterator<Item = &'a str> {
@@ -61,6 +53,21 @@ fn parse_reg<'a, I>(tokens: &mut I) -> Result<Reg, Error>
     }
 }
 
+// ==== Instructions and programs ====
+
+#[derive(Copy, Clone, PartialEq)]
+enum Inst {
+    SND(Op),
+    SET(Reg, Op),
+    ADD(Reg, Op),
+    MUL(Reg, Op),
+    MOD(Reg, Op),
+    RCV(Reg),
+    JGZ(Op, Op),
+}
+
+type Program = Vec<Inst>;
+
 fn parse_program(input: &str) -> Result<Program, Error> {
     let mut program = Program::new();
 
@@ -89,29 +96,35 @@ fn parse_program(input: &str) -> Result<Program, Error> {
     Ok(program)
 }
 
+// ==== Virtual machines ====
+
+enum Message {
+    Value(Int),
+    Blocked(u32), // received count
+    Terminated,
+}
+
 struct Machine {
     pc: Int,
     regs: [Int; 26],
-    send: VecDeque<Int>,
-    count: u32,
+    sender: Sender<Message>,
+    receiver: Receiver<Message>,
+    send_count: u32,
+    receive_count: u32,
 }
 
 impl Machine {
     const P: usize = ('p' as u8 - 'a' as u8) as usize;
 
-    fn new() -> Self {
+    fn with_mpsc(sender: Sender<Message>, receiver: Receiver<Message>) -> Self {
         Self {
             pc: 0,
             regs: [0; 26],
-            send: VecDeque::new(),
-            count: 0,
+            sender,
+            receiver,
+            send_count: 0,
+            receive_count: 0,
         }
-    }
-
-    fn with_pid(pid: Int) -> Self {
-        let mut machine = Self::new();
-        machine.regs[Self::P] = pid;
-        machine
     }
 
     fn read(&self, op: Op) -> Int {
@@ -126,11 +139,11 @@ impl Machine {
     }
 
     fn send(&mut self, op: Op) {
-        self.count += 1;
+        self.send_count += 1;
         // See this link for why a temp is required here; this may be fixed in the future!
         // https://internals.rust-lang.org/t/accepting-nested-method-calls-with-an-mut-self-receiver
         let value = self.read(op);
-        self.send.push_back(value);
+        let _ = self.sender.send(Message::Value(value));
     }
 
     fn is_running(&mut self, program: &Program) -> bool {
@@ -138,7 +151,7 @@ impl Machine {
         self.pc >= 0 && self.pc < len
     }
 
-    fn run_yielding(&mut self, program: &Program) -> Result<Option<Reg>, Error> {
+    fn run_yielding(&mut self, program: &Program) -> Option<Reg> {
         while self.is_running(&program) {
             let inst = program[self.pc as usize];
 
@@ -160,27 +173,77 @@ impl Machine {
                 Inst::ADD(reg, op) => *self.rw(reg) += self.read(op),
                 Inst::MUL(reg, op) => *self.rw(reg) *= self.read(op),
                 Inst::MOD(reg, op) => *self.rw(reg) %= self.read(op),
-                Inst::RCV(reg) => return Ok(Some(reg)), // yield
+                Inst::RCV(reg) => return Some(reg), // yield
                 _ => (),
             }
         }
 
-        Ok(None) // terminate
+        None
+    }
+
+    fn run_threaded(&mut self, program: &Program, pid: Int) -> u32 {
+        // Reset virtual machine
+        self.pc = 0;
+        self.send_count = 0;
+        self.receive_count = 0;
+        self.regs[Self::P] = pid;
+
+        // Run until the first yield
+        let mut reg = self.run_yielding(&program);
+
+        // Continue to receive messages until we terminate or deadlock
+        while self.is_running(&program) {
+            // Receive a message, notifying our partner if we're blocked
+            let message = match self.receiver.try_recv() {
+                Ok(message) => message,
+                Err(TryRecvError::Empty) => {
+                    let _ = self.sender.send(Message::Blocked(self.receive_count));
+                    self.receiver.recv().unwrap()
+                },
+                _ => break,
+            };
+
+            // Handle the message
+            match message {
+                Message::Value(val) => {
+                    self.receive_count += 1;
+                    *self.rw(reg.unwrap()) = val;
+                    reg = self.run_yielding(&program);
+                },
+                Message::Blocked(received) => {
+                    // Exit the loop if we're deadlocked
+                    if received == self.send_count {
+                        break;
+                    }
+                },
+                Message::Terminated => {
+                    break;
+                }
+            }
+        }
+
+        // Notify our partner that we're terminating
+        let _ = self.sender.send(Message::Terminated);
+        self.send_count
     }
 }
 
-fn part1(program: &Program) -> Result<Int, Error> {
-    let mut machine = Machine::new();
+// ==== Exercises and tests ====
 
-    if let None = machine.run_yielding(&program)? {
-        return Err(Error::new(ErrorKind::Other, "Never reached RCV instruction"));
+fn part1(program: &Program) -> Option<Int> {
+    let (tx, rx) = mpsc::channel();
+    let (_, dummy) = mpsc::channel();
+    let mut machine = Machine::with_mpsc(tx, dummy);
+
+    if let None = machine.run_yielding(&program) {
+        return None;
     }
 
-    if let Some(last_snd) = machine.send.back() {
-        return Ok(*last_snd);
+    if let Some(Message::Value(last_snd)) = rx.try_iter().last() {
+        return Some(last_snd);
     }
 
-    Err(Error::new(ErrorKind::Other, "Never reached a SND instruction"))
+    None
 }
 
 #[test]
@@ -197,49 +260,21 @@ fn test_day18_part1() {
         set a 1
         jgz a -2";
 
-    let result = || -> Result<(), Error> {
-        let program = parse_program(&input)?;
-        assert_eq!(part1(&program)?, 4);
-        Ok(())
-    }();
-
-    if let Err(e) = result {
-        panic!(format!("{}", e));
-    }
+    let program = parse_program(&input).unwrap();
+    assert_eq!(part1(&program), Some(4));
 }
 
-fn part2(program: &Program) -> Result<u32, Error> {
-    // Initialize two machines with PID 0 and 1
-    let mut machine0 = Machine::with_pid(0);
-    let mut machine1 = Machine::with_pid(1);
+fn part2(program: &Program) -> u32 {
+    // Open a pair of channels
+    let (tx0, rx1) = mpsc::channel();
+    let (tx1, rx0) = mpsc::channel();
 
-    // Run each program until their first yield
-    let mut yield0 = machine0.run_yielding(&program)?;
-    let mut yield1 = machine1.run_yielding(&program)?;
-
-    // While at least one program is running and not deadlocked
-    // TODO try this with real threads
-    loop {
-        if machine0.is_running(&program) {
-            if let Some(msg) = machine1.send.pop_front() {
-                let reg = yield0.unwrap();
-                *machine0.rw(reg) = msg;
-                yield0 = machine0.run_yielding(&program)?;
-                continue;
-            }
-        }
-
-        if machine1.is_running(&program) {
-            if let Some(msg) = machine0.send.pop_front() {
-                let reg = yield1.unwrap();
-                *machine1.rw(reg) = msg;
-                yield1 = machine1.run_yielding(&program)?;
-                continue;
-            }
-        }
-
-        return Ok(machine1.count);
-    }
+    // Use scoped threads so we gurantee the lifetime of the program reference
+    crossbeam::scope(|scope| {
+        let _handle0 = scope.spawn(move || Machine::with_mpsc(tx0, rx0).run_threaded(program, 0));
+        let handle1 = scope.spawn(move || Machine::with_mpsc(tx1, rx1).run_threaded(program, 1));
+        handle1.join().unwrap()
+    })
 }
 
 #[test]
@@ -253,15 +288,8 @@ fn test_day18_part2() {
         rcv c
         rcv d";
 
-    let result = || -> Result<(), Error> {
-        let program = parse_program(&input)?;
-        assert_eq!(part2(&program)?, 3);
-        Ok(())
-    }();
-
-    if let Err(e) = result {
-        panic!(format!("{}", e));
-    }
+    let program = parse_program(&input).unwrap();
+    assert_eq!(part2(&program), 3);
 }
 
 pub fn day18(args: &mut env::Args) -> Result<(), Error> {
@@ -272,8 +300,8 @@ pub fn day18(args: &mut env::Args) -> Result<(), Error> {
     };
 
     let program = parse_program(&input)?;
-    println!("Part 1: {}", part1(&program)?);
-    println!("Part 2: {}", part2(&program)?);
+    println!("Part 1: {}", part1(&program).unwrap());
+    println!("Part 2: {}", part2(&program));
 
     Ok(())
 }
