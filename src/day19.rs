@@ -11,11 +11,12 @@ fn is_valid(grid: &[char], rows: i32, cols: i32, x: i32, y: i32) -> bool {
     !grid[(y * cols + x) as usize].is_whitespace()
 }
 
-fn part1(input: &str) -> String {
-    // Read rows as a 2D grid
+fn dewit(input: &str) -> (String, u32) {
+    let mut grid = Vec::new();
     let mut rows = 0;
     let mut cols = 0;
-    let mut grid = Vec::new();
+
+    // Read rows as a 2D grid
     for line in input.lines() {
         if cols == 0 {
             cols = line.chars().count() as i32;
@@ -28,8 +29,12 @@ fn part1(input: &str) -> String {
         rows += 1;
     }
 
-    // Find start along top row
     let mut x = 0;
+    let mut y = 0;
+    let mut dx = 0;
+    let mut dy = 1;
+
+    // Find start along top row
     while x < cols {
         if grid[x as usize] == '|' { break; }
         x += 1;
@@ -37,16 +42,13 @@ fn part1(input: &str) -> String {
 
     if x == cols {
         println!("Error: unable to find start");
-        return "".to_string();
+        return ("".to_string(), 0);
     }
 
-    let mut y = 0;
-    let mut dx = 0;
-    let mut dy = 1;
+    let mut stack = Vec::new();
+    let mut steps = 1;
 
     // Follow lines while pushing letters
-    let mut stack = Vec::new();
-
     loop {
         // If we can't move forward, try to turn
         if !is_valid(&grid, rows, cols, x + dx, y + dy) {
@@ -64,13 +66,14 @@ fn part1(input: &str) -> String {
             }
             else {
                 // Reached a dead end; return the stack
-                return stack.iter().collect();
+                return (stack.iter().collect(), steps);
             }
         }
 
         // Move forward
         x += dx;
         y += dy;
+        steps += 1;
 
         // If we visit a letter, push it on the stack
         let c = grid[(y * cols + x) as usize];
@@ -81,7 +84,7 @@ fn part1(input: &str) -> String {
 }
 
 #[test]
-fn test_day19_part1() {
+fn test_day19() {
     let input = concat!(
         "     |          \n",
         "     |  +--+    \n",
@@ -91,7 +94,9 @@ fn test_day19_part1() {
         "     +B-+  +--+ \n",
         "                ");
 
-    assert_eq!(&part1(&input), "ABCDEF");
+    let (part1, part2) = dewit(&input);
+    assert_eq!(&part1, "ABCDEF");
+    assert_eq!(part2, 38);
 }
 
 pub fn day19(args: &mut env::Args) -> Result<(), Error> {
@@ -101,7 +106,8 @@ pub fn day19(args: &mut env::Args) -> Result<(), Error> {
         fs::read_to_string(name)?
     };
 
-    println!("Part 1: {}", part1(&input));
+    let (part1, part2) = dewit(&input);
+    println!("Part 1: {}\nPart 2: {}", part1, part2);
 
     Ok(())
 }
