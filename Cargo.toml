@@ -5,3 +5,4 @@ authors = ["Trevor Smith <trevorsm7@gmail.com>"]
 
 [dependencies]
 crossbeam = "0.4"
+regex = "1"
