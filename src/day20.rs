@@ -1,77 +1,96 @@
 use std::fs;
 use std::env;
 use std::io::Error;
+use std::cmp::Ordering;
 
 extern crate regex;
 use self::regex::{Regex, Captures};
 
-fn manhattan_distance<'t>(caps: &Captures<'t>) -> i32 {
-    let x: i32 = caps.get(2).unwrap().as_str().parse().unwrap();
-    let y: i32 = caps.get(3).unwrap().as_str().parse().unwrap();
-    let z: i32 = caps.get(4).unwrap().as_str().parse().unwrap();
-    x.abs() + y.abs() + z.abs()
+#[derive(Copy, Clone)]
+struct Vector {
+    x: i32,
+    y: i32,
+    z: i32,
+}
+
+impl Vector {
+    fn from_caps<'t>(caps: &Captures<'t>) -> Self {
+        let x: i32 = caps.get(2).unwrap().as_str().parse().unwrap();
+        let y: i32 = caps.get(3).unwrap().as_str().parse().unwrap();
+        let z: i32 = caps.get(4).unwrap().as_str().parse().unwrap();
+        Self { x, y, z }
+    }
+
+    fn manhattan_length(&self) -> i32 {
+        self.x.abs() + self.y.abs() + self.z.abs()
+    }
+}
+
+impl PartialOrd for Vector {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.manhattan_length().partial_cmp(&other.manhattan_length())
+    }
+}
+
+impl PartialEq for Vector {
+    fn eq(&self, other: &Self) -> bool {
+        self.manhattan_length() == other.manhattan_length()
+    }
+}
+
+#[derive(Copy, Clone, PartialOrd, PartialEq)]
+struct Particle {
+    acc: Vector,
+    vel: Vector,
+    pos: Vector,
+}
+
+impl Particle {
+    fn from_string(string: &str) -> Self {
+        let mut acc = None;
+        let mut vel = None;
+        let mut pos = None;
+
+        let re = Regex::new(r"([pva])=<\s*(-?\d+),\s*(-?\d+),\s*(-?\d+)>").unwrap();
+        for caps in re.captures_iter(string) {
+            match caps.get(1).unwrap().as_str() {
+                "p" => pos = Some(Vector::from_caps(&caps)),
+                "v" => vel = Some(Vector::from_caps(&caps)),
+                "a" => acc = Some(Vector::from_caps(&caps)),
+                _ => {
+                    panic!(format!("Unhandled: '{}'", caps.get(0).unwrap().as_str()));
+                },
+            }
+        }
+
+        let acc = acc.expect("Failed to parse acceleration");
+        let vel = vel.expect("Failed to parse velocity");
+        let pos = pos.expect("Failed to parse position");
+        Self { acc, vel, pos }
+    }
 }
 
 fn part1(input: &str) -> Option<i32> {
     let mut closest = None;
 
-    let mut current = 0;
-    let re = Regex::new(r"([pva])=<\s*(-?\d+),\s*(-?\d+),\s*(-?\d+)>").unwrap();
+    let mut index = 0;
     for line in input.trim().lines() {
-        let mut acc = None;
-        let mut vel = None;
-        let mut pos = None;
+        let current = Particle::from_string(line);
 
-        // Parse each vector on this line
-        for caps in re.captures_iter(line) {
-            match caps.get(1).unwrap().as_str() {
-                "p" => pos = Some(manhattan_distance(&caps)),
-                "v" => vel = Some(manhattan_distance(&caps)),
-                "a" => acc = Some(manhattan_distance(&caps)),
-                _ => {
-                    println!("Unhandled: '{}'", caps.get(0).unwrap().as_str());
-                    return None;
-                },
+        let current_index = index;
+        index += 1;
+
+        if let Some((_, previous)) = closest {
+            if current >= previous {
+                continue;
             }
         }
 
-        // Fail if any of the vectors were missing
-        if acc.is_none() || vel.is_none() || pos.is_none() {
-            println!("Line '{}' is incomplete", line);
-            return None;
-        }
-
-        let acc = acc.unwrap();
-        let vel = vel.unwrap();
-        let pos = pos.unwrap();
-
-        // Find the minimum in order of acc, vel, pos
-        let mut is_closest = true;
-        if let Some((_, min_acc, min_vel, min_pos)) = closest {
-            if acc > min_acc {
-                is_closest = false;
-            }
-            else if acc == min_acc {
-                if vel > min_vel {
-                    is_closest = false;
-                }
-                else if vel == min_vel {
-                    if pos > min_pos {
-                        is_closest = false;
-                    }
-                }
-            }
-        }
-
-        if is_closest {
-            closest = Some((current, acc, vel, pos));
-        }
-
-        current += 1;
+        closest = Some((current_index, current));
     }
 
     // Return the index of vector closest to origin as t -> infinity
-    if let Some((index, _, _, _)) = closest { Some(index) } else { None }
+    if let Some((index, _)) = closest { Some(index) } else { None }
 }
 
 #[test]
