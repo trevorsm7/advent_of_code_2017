@@ -77,12 +77,15 @@ struct Particle {
 }
 
 impl Particle {
-    fn from_string(string: &str) -> Self {
+    fn regex() -> Regex {
+        Regex::new(r"([pva])=<\s*(-?\d+),\s*(-?\d+),\s*(-?\d+)>").unwrap()
+    }
+
+    fn from_string(string: &str, re: &Regex) -> Self {
         let mut acc = None;
         let mut vel = None;
         let mut pos = None;
 
-        let re = Regex::new(r"([pva])=<\s*(-?\d+),\s*(-?\d+),\s*(-?\d+)>").unwrap();
         for caps in re.captures_iter(string) {
             match caps.get(1).unwrap().as_str() {
                 "p" => pos = Some(Vector::from_caps(&caps)),
@@ -225,9 +228,10 @@ impl PartialEq for Collision {
 fn part1(input: &str) -> Option<usize> {
     let mut closest = None;
 
+    let re = Particle::regex();
     let mut index = 0;
     for line in input.trim().lines() {
-        let current = Particle::from_string(line);
+        let current = Particle::from_string(line, &re);
         let current_index = index;
         index += 1;
 
@@ -257,9 +261,10 @@ fn test_day20_part1() {
 
 fn part2(input: &str) -> usize {
     // Read all particles into a vector
+    let re = Particle::regex();
     let mut particles = Vec::new();
     for line in input.trim().lines() {
-        particles.push(Particle::from_string(line));
+        particles.push(Particle::from_string(line, &re));
     }
 
     // Record all potential collisions in a heap sorted by time
