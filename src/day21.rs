@@ -38,6 +38,9 @@ fn part1(input: &str) -> u32 {
         else {
             // TODO 3x3
         }
+
+        // Swap front and back buffers
+        mem::swap(&mut front, &mut back);
     }
 
     0
@@ -82,7 +85,7 @@ fn read_patterns(input: &str) -> (Vec<Pattern2x2>, Vec<Pattern3x3>) {
                 .chars().map(|c| if c == '#' {1} else {0})
                 .collect::<Vec<u8>>();
 
-            // Map to block linear memory
+            // Map to 2x2 block linear memory
             pattern.1[0..2].copy_from_slice(&pitched[0..2]);
             pattern.1[4..6].copy_from_slice(&pitched[2..4]);
             pattern.1[2..4].copy_from_slice(&pitched[4..6]);
@@ -91,7 +94,7 @@ fn read_patterns(input: &str) -> (Vec<Pattern2x2>, Vec<Pattern3x3>) {
             pattern.2[4..6].copy_from_slice(&pitched[10..12]);
             pattern.2[2..4].copy_from_slice(&pitched[12..14]);
             pattern.2[6..8].copy_from_slice(&pitched[14..16]);
-            
+
             pat3x3.push(pattern);
         }
         else {
@@ -128,55 +131,144 @@ fn test_day21_read_patterns() {
          0, 1]));
 }
 
-// NOTE we probably want to use 2x2/3x3 block-linear layout
-fn enhance_2x2(front: &mut Vec<u8>, back: &mut Vec<u8>, patterns: &[Pattern2x2]) {
+fn enhance_2x2(front: &Vec<u8>, back: &mut Vec<u8>, patterns: &[Pattern2x2]) {
     let n = front.len() / 4;
     back.resize(9 * n, 0);
 
     for i in 0..n {
-        let (f1, f2) = (n * 4, (n + 1) * 4);
-        let (b1, b2) = (n * 9, (n + 1) * 9);
-        match_pattern_2x2(&front[f1..f2], &mut back[b1..b2], patterns);
+        let (f1, f2) = (i * 4, (i + 1) * 4);
+        let (b1, b2) = (i * 9, (i + 1) * 9);
+        back[b1..b2].copy_from_slice(
+            match_pattern_2x2(&front[f1..f2], patterns)
+                .expect(&format!("Unable to match pattern {:?}", &front[f1..f2])));
     }
-
-    // TODO why can't I borrow mutably?
-    //mem::swap(front, &mut back);
 }
 
-fn match_pattern_2x2(input: &[u8], output: &mut [u8], patterns: &[Pattern2x2]) {
+#[test]
+fn test_day21_enhance_2x2() {
+    let (patterns, _) = read_patterns("../.# => ##./#../...");
+    let front = vec![
+        1, 0,
+        0, 0,
+        0, 1,
+        0, 0,
+        0, 0,
+        1, 0,
+        0, 0,
+        0, 1];
+    let mut back = Vec::new();
+    enhance_2x2(&front, &mut back, &patterns);
+    for i in 0..4 {
+        let (a, b) = (i * 9, (i + 1) * 9);
+        assert_eq!(
+            &back[a..b],
+            &[1, 1, 0,
+              1, 0, 0,
+              0, 0, 0]);
+    }
+}
+
+fn match_pattern_2x2<'a>(input: &[u8], patterns: &'a [Pattern2x2]) -> Option<&'a [u8]> {
     // Pre-compute all 8 transforms of the input
     let transforms = transform_2x2(input);
 
     // Try to match each transform with each pattern
-    for &(lr, hr) in patterns {
+    for (ref lr, ref hr) in patterns {
         for &source in &transforms {
-            if lr == source {
-                // Copy the matching high res stamp
-                output.copy_from_slice(&hr);
-                return;
+            if *lr == source {
+                return Some(hr);
             }
         }
     }
 
-    // TODO return an error if no match found?
-    println!("Warning: no match found for {:?}", input);
+    None
 }
 
-/*#[test]
+#[test]
 fn test_day21_match_pattern_2x2() {
+    let (patterns, _) = read_patterns("../.# => ##./#../...");
 
-}*/
+    let input =
+        &[0, 1,
+          0, 0];
+    let output =
+        &[1, 1, 0,
+          1, 0, 0,
+          0, 0, 0];
+    assert_eq!(match_pattern_2x2(input, &patterns).unwrap(), output);
+
+    let input =
+        &[1, 1,
+          0, 0];
+    assert_eq!(match_pattern_2x2(input, &patterns), None);
+}
 
 fn transform_2x2(input: &[u8]) -> Vec<[u8; 4]> {
     let mut transforms = Vec::with_capacity(8);
     transforms.resize(8, [0; 4]);
+    transforms[0].copy_from_slice(input);
 
-    // TODO generate transforms
+    for i in 1..4 {
+        // Rotate source 90 degrees into target
+        transforms[i][1] = transforms[i - 1][0];
+        transforms[i][3] = transforms[i - 1][1];
+        transforms[i][0] = transforms[i - 1][2];
+        transforms[i][2] = transforms[i - 1][3];
+    }
+
+    for i in 0..4 {
+        // Flip source into target
+        transforms[i + 4][1] = transforms[i][0];
+        transforms[i + 4][0] = transforms[i][1];
+        transforms[i + 4][3] = transforms[i][2];
+        transforms[i + 4][2] = transforms[i][3];
+    }
 
     transforms
 }
 
-/*#[test]
+#[test]
 fn test_day21_transform_2x2() {
-
-}*/
+    assert_eq!(
+        transform_2x2(&
+            [1, 1,
+             0, 0]),
+        vec![
+            [1, 1,
+             0, 0],
+            [0, 1,
+             0, 1],
+            [0, 0,
+             1, 1],
+            [1, 0,
+             1, 0],
+            [1, 1,
+             0, 0],
+            [1, 0,
+             1, 0],
+            [0, 0,
+             1, 1],
+            [0, 1,
+             0, 1]]);
+    assert_eq!(
+        transform_2x2(&
+            [1, 0,
+             1, 0]),
+        vec![
+            [1, 0,
+             1, 0],
+            [1, 1,
+             0, 0],
+            [0, 1,
+             0, 1],
+            [0, 0,
+             1, 1],
+            [0, 1,
+             0, 1],
+            [1, 1,
+             0, 0],
+            [1, 0,
+             1, 0],
+            [0, 0,
+             1, 1]]);
+}
