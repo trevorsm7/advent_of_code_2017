@@ -3,44 +3,29 @@ use std::env;
 use std::mem;
 use std::io::Error;
 
-type Pattern2x2 = ([u8; 4], [u8; 9]);
-type Pattern3x3 = ([u8; 9], [u8; 16]);
+type Pattern2x2 = ([u32; 4], [u32; 9]);
+type Pattern3x3 = ([u32; 9], [u32; 16]);
 
 pub fn day21(args: &mut env::Args) -> Result<(), Error> {
     // Read from file in first arg or default to input.txt
-    let input = {
+    let (pat2x2, pat3x3) = {
         let name = args.next().unwrap_or("input/day21.txt".to_string());
-        fs::read_to_string(name)?
+        let text = fs::read_to_string(name)?;
+        read_patterns(&text)
     };
 
-    println!("Part 1: {}", part1(&input, 5));
-    //println!("Part 2: {}", part2(&input));
-
-    Ok(())
-}
-
-fn part1(patterns: &str, steps: usize) -> u8 {
-    let (pat2x2, pat3x3) = read_patterns(patterns);
-
-    //.#.
-    //..#
-    //###
     let input =
         [0, 1, 0,
          0, 0, 1,
          1, 1, 1];
 
-    let output = enhance(&input[..], steps, &pat2x2, &pat3x3);
+    let part1 = enhance(&input[..], 5, &pat2x2, &pat3x3);
+    let part2 = enhance(&input[..], 18, &pat2x2, &pat3x3);
 
-    output.iter().sum()
-}
+    println!("Part 1: {}", part1.iter().sum::<u32>());
+    println!("Part 2: {}", part2.iter().sum::<u32>());
 
-#[test]
-fn test_day21_part1() {
-    let input = "\
-        ../.# => ##./#../...\n\
-        .#./..#/### => #..#/..../..../#..#";
-    assert_eq!(part1(&input, 2), 12);
+    Ok(())
 }
 
 fn read_patterns(input: &str) -> (Vec<Pattern2x2>, Vec<Pattern3x3>) {
@@ -53,34 +38,34 @@ fn read_patterns(input: &str) -> (Vec<Pattern2x2>, Vec<Pattern3x3>) {
         if count == 6 {
             let mut pattern = ([0; 4], [0; 9]);
 
-            // Collect a string, map chars to u8, and collect a Vec
+            // Collect a string, map chars to u32, and collect a Vec
             pattern.0.copy_from_slice(&split.clone().take(2)
                 .collect::<Vec<&str>>().concat()
                 .chars().map(|c| if c == '#' {1} else {0})
-                .collect::<Vec<u8>>());
+                .collect::<Vec<u32>>());
 
-            // Collect a string, map chars to u8, and collect a Vec
+            // Collect a string, map chars to u32, and collect a Vec
             pattern.1.copy_from_slice(&split.clone().skip(3).take(3)
                 .collect::<Vec<&str>>().concat()
                 .chars().map(|c| if c == '#' {1} else {0})
-                .collect::<Vec<u8>>());
+                .collect::<Vec<u32>>());
 
             pat2x2.push(pattern);
         }
         else if count == 8 {
             let mut pattern = ([0; 9], [0; 16]);
 
-            // Collect a string, map chars to u8, and collect a Vec
+            // Collect a string, map chars to u32, and collect a Vec
             pattern.0.copy_from_slice(&split.clone().take(3)
                 .collect::<Vec<&str>>().concat()
                 .chars().map(|c| if c == '#' {1} else {0})
-                .collect::<Vec<u8>>());
+                .collect::<Vec<u32>>());
 
-            // Collect a string, map chars to u8, and collect a Vec
+            // Collect a string, map chars to u32, and collect a Vec
             pattern.1.copy_from_slice(&split.clone().skip(4).take(4)
                 .collect::<Vec<&str>>().concat()
                 .chars().map(|c| if c == '#' {1} else {0})
-                .collect::<Vec<u8>>());
+                .collect::<Vec<u32>>());
 
             pat3x3.push(pattern);
         }
@@ -114,7 +99,7 @@ fn test_day21_read_patterns() {
           1, 0, 0, 1]));
 }
 
-fn enhance(input: &[u8], steps: usize, pat2x2: &[Pattern2x2], pat3x3: &[Pattern3x3]) -> Vec<u8> {
+fn enhance(input: &[u32], steps: usize, pat2x2: &[Pattern2x2], pat3x3: &[Pattern3x3]) -> Vec<u32> {
     let mut front = input.to_vec();
     let mut back = Vec::new();
 
@@ -179,7 +164,10 @@ fn enhance(input: &[u8], steps: usize, pat2x2: &[Pattern2x2], pat3x3: &[Pattern3
 
 #[test]
 fn test_day21_enhance() {
-    let (pat2x2, pat3x3) = read_patterns("../.# => ##./#../...");
+    let (pat2x2, pat3x3) = read_patterns("\
+        ../.# => ##./#../...\n\
+        .#./..#/### => #..#/..../..../#..#");
+
     let input =
         [1, 0, 0, 1,
          0, 0, 0, 0,
@@ -196,7 +184,6 @@ fn test_day21_enhance() {
     let output = enhance(&input[..], steps, &pat2x2, &pat3x3);
     assert_eq!(&output[..], &expected[..]);
 
-    let (pat2x2, pat3x3) = read_patterns(".#./..#/### => #..#/..../..../#..#");
     let input =
         [0, 1, 0, 1, 0, 0, 0, 1, 0,
          0, 0, 1, 1, 0, 1, 1, 0, 0,
@@ -223,9 +210,17 @@ fn test_day21_enhance() {
     let steps = 1;
     let output = enhance(&input[..], steps, &pat2x2, &pat3x3);
     assert_eq!(&output[..], &expected[..]);
+
+    let input =
+        [0, 1, 0,
+         0, 0, 1,
+         1, 1, 1];
+    let steps = 2;
+    let output = enhance(&input[..], steps, &pat2x2, &pat3x3);
+    assert_eq!(output.iter().sum::<u32>(), 12);
 }
 
-fn match_pattern_2x2<'a>(input: &[u8], patterns: &'a [Pattern2x2]) -> Option<&'a [u8]> {
+fn match_pattern_2x2<'a>(input: &[u32], patterns: &'a [Pattern2x2]) -> Option<&'a [u32]> {
     // Pre-compute all 8 transforms of the input
     let transforms = transform_2x2(input);
 
@@ -260,7 +255,7 @@ fn test_day21_match_pattern_2x2() {
     assert_eq!(match_pattern_2x2(input, &patterns), None);
 }
 
-fn match_pattern_3x3<'a>(input: &[u8], patterns: &'a [Pattern3x3]) -> Option<(&'a [u8])> {
+fn match_pattern_3x3<'a>(input: &[u32], patterns: &'a [Pattern3x3]) -> Option<(&'a [u32])> {
     // Pre-compute all 8 transforms of the input
     let transforms = transform_3x3(input);
 
@@ -298,7 +293,7 @@ fn test_day21_match_pattern_3x3() {
     assert_eq!(match_pattern_3x3(input, &patterns), None);
 }
 
-fn transform_2x2(input: &[u8]) -> Vec<[u8; 4]> {
+fn transform_2x2(input: &[u32]) -> Vec<[u32; 4]> {
     let mut transforms = Vec::with_capacity(8);
     transforms.resize(8, [0; 4]);
     transforms[0].copy_from_slice(input);
@@ -368,7 +363,7 @@ fn test_day21_transform_2x2() {
              1, 1]]);
 }
 
-fn transform_3x3(input: &[u8]) -> Vec<[u8; 9]> {
+fn transform_3x3(input: &[u32]) -> Vec<[u32; 9]> {
     let mut transforms = Vec::with_capacity(8);
     transforms.resize(8, [0; 9]);
     transforms[0].copy_from_slice(input);
