@@ -19,28 +19,20 @@ pub fn day21(args: &mut env::Args) -> Result<(), Error> {
     Ok(())
 }
 
-fn part1(input: &str, steps: usize) -> u8 {
-    let (pat2x2, pat3x3) = read_patterns(input);
+fn part1(patterns: &str, steps: usize) -> u8 {
+    let (pat2x2, pat3x3) = read_patterns(patterns);
 
     //.#.
     //..#
     //###
-    let mut front = vec![
-        0, 1, 0,
-        0, 0, 1,
-        1, 1, 1];
-    let mut back = Vec::new();
+    let input =
+        [0, 1, 0,
+         0, 0, 1,
+         1, 1, 1];
 
-    for i in 0..steps {
-        if front.len() % 4 == 0 {
-            enhance_2x2(&mut front, &mut back, &pat2x2);
-        }
-        else {
-            enhance_3x3(&mut front, &mut back, &pat3x3);
-        }
-    }
+    let output = enhance(&input[..], steps, &pat2x2, &pat3x3);
 
-    front.iter().sum()
+    output.iter().sum()
 }
 
 #[test]
@@ -122,116 +114,115 @@ fn test_day21_read_patterns() {
           1, 0, 0, 1]));
 }
 
-fn enhance_2x2<'a>(front: &'a mut Vec<u8>, back: &'a mut Vec<u8>, patterns: &[Pattern2x2]) {
-    assert_eq!(front.len() % 4, 0);
-    let n2 = front.len() / 4;
-    back.resize(9 * n2, 0);
+fn enhance(input: &[u8], steps: usize, pat2x2: &[Pattern2x2], pat3x3: &[Pattern3x3]) -> Vec<u8> {
+    let mut front = input.to_vec();
+    let mut back = Vec::new();
 
-    let n = (n2 as f64).sqrt() as usize;
+    for _ in 0..steps {
+        let n2;
+        let ldim;
+        let hdim;
+        if front.len() % 4 == 0 {
+            ldim = 2;
+            hdim = 3;
+            n2 = front.len() / 4;
+            back.resize(9 * n2, 0);
+        }
+        else {
+            assert_eq!(front.len() % 9, 0);
+            ldim = 3;
+            hdim = 4;
+            n2 = front.len() / 9;
+            back.resize(16 * n2, 0);
+        }
 
-    for by in 0..n {
-        for bx in 0..n {
-            // Copy 2x2 tile into contiguous memory
-            let mut lr = [0; 4];
-            for row in 0..2 {
-                let (d1, d2) = (row * 2, (row + 1) * 2);
-                let (s1, s2) = (((by * 2 + row) * n + bx) * 2, ((by * 2 + row) * n + bx + 1) * 2);
-                lr[d1..d2].copy_from_slice(&front[s1..s2]);
-            }
+        let n = (n2 as f64).sqrt() as usize;
 
-            // Find matching 3x3 tile
-            let hr = match_pattern_2x2(&lr[..], patterns)
-                .expect(&format!("Unable to match pattern {:?}", &lr[..]));
-            
-            // Copy 3x3 tile into non-contiguous memory
-            for row in 0..3 {
-                let (d1, d2) = (((by * 3 + row) * n + bx) * 3, ((by * 3 + row) * n + bx + 1) * 3);
-                let (s1, s2) = (row * 3, (row + 1) * 3);
-                back[d1..d2].copy_from_slice(&hr[s1..s2]);
+        for by in 0..n {
+            for bx in 0..n {
+                // Copy low-res tile into contiguous memory
+                let mut lr = vec![0; ldim * ldim];
+                for row in 0..ldim {
+                    let (d1, d2) = (row * ldim, (row + 1) * ldim);
+                    let s1 = ((by * ldim + row) * n + bx) * ldim;
+                    let s2 = ((by * ldim + row) * n + bx + 1) * ldim;
+                    lr[d1..d2].copy_from_slice(&front[s1..s2]);
+                }
+
+                // Find matching high-res tile
+                let hr =
+                    if ldim == 2 {
+                        match_pattern_2x2(&lr[..], pat2x2)
+                            .expect(&format!("Unable to match pattern {:?}", &lr[..]))
+                    }
+                    else {
+                        match_pattern_3x3(&lr[..], pat3x3)
+                            .expect(&format!("Unable to match pattern {:?}", &lr[..]))
+                    };
+                
+                // Copy high-res tile into non-contiguous memory
+                for row in 0..hdim {
+                    let d1 = ((by * hdim + row) * n + bx) * hdim;
+                    let d2 = ((by * hdim + row) * n + bx + 1) * hdim;
+                    let (s1, s2) = (row * hdim, (row + 1) * hdim);
+                    back[d1..d2].copy_from_slice(&hr[s1..s2]);
+                }
             }
         }
+
+        // Swap front and back buffers
+        mem::swap(&mut front, &mut back);
     }
 
-    // Swap front and back buffers
-    mem::swap(front, back);
+    front
 }
 
 #[test]
-fn test_day21_enhance_2x2() {
-    let (patterns, _) = read_patterns("../.# => ##./#../...");
-    let mut front = vec!
+fn test_day21_enhance() {
+    let (pat2x2, pat3x3) = read_patterns("../.# => ##./#../...");
+    let input =
         [1, 0, 0, 1,
          0, 0, 0, 0,
          0, 0, 0, 0,
          1, 0, 0, 1];
-    let output =
+    let expected =
         [1, 1, 0, 1, 1, 0,
          1, 0, 0, 1, 0, 0,
          0, 0, 0, 0, 0, 0,
          1, 1, 0, 1, 1, 0,
          1, 0, 0, 1, 0, 0,
          0, 0, 0, 0, 0, 0];
-    let mut back = Vec::new();
-    enhance_2x2(&mut front, &mut back, &patterns);
-    assert_eq!(&front[..], &output[..]);
-}
+    let steps = 1;
+    let output = enhance(&input[..], steps, &pat2x2, &pat3x3);
+    assert_eq!(&output[..], &expected[..]);
 
-fn enhance_3x3<'a>(front: &'a mut Vec<u8>, back: &'a mut Vec<u8>, patterns: &[Pattern3x3]) {
-    assert_eq!(front.len() % 9, 0);
-    let n2 = front.len() / 9;
-    back.resize(16 * n2, 0);
-
-    let n = (n2 as f64).sqrt() as usize;
-
-    for by in 0..n {
-        for bx in 0..n {
-            // Copy 3x3 tile into contiguous memory
-            let mut lr = [0; 9];
-            for row in 0..3 {
-                let (d1, d2) = (row * 3, (row + 1) * 3);
-                let (s1, s2) = (((by * 3 + row) * n + bx) * 3, ((by * 3 + row) * n + bx + 1) * 3);
-                lr[d1..d2].copy_from_slice(&front[s1..s2]);
-            }
-
-            // Find matching 4x4 tile
-            let hr = match_pattern_3x3(&lr[..], patterns)
-                .expect(&format!("Unable to match pattern {:?}", &lr[..]));
-            
-            // Copy 4x4 tile into non-contiguous memory
-            for row in 0..4 {
-                let (d1, d2) = (((by * 4 + row) * n + bx) * 4, ((by * 4 + row) * n + bx + 1) * 4);
-                let (s1, s2) = (row * 4, (row + 1) * 4);
-                back[d1..d2].copy_from_slice(&hr[s1..s2]);
-            }
-        }
-    }
-
-    // Swap front and back buffers
-    mem::swap(front, back);
-}
-
-#[test]
-fn test_day21_enhance_3x3() {
-    let (_, patterns) = read_patterns(".#./..#/### => #..#/..../..../#..#");
-    let mut front = vec!
-        [0, 1, 0, 1, 0, 0,
-         0, 0, 1, 1, 0, 1,
-         1, 1, 1, 1, 1, 0,
-         1, 1, 1, 0, 1, 1,
-         1, 0, 0, 1, 0, 1,
-         0, 1, 0, 0, 0, 1];
-    let output =
-        [1, 0, 0, 1, 1, 0, 0, 1,
-         0, 0, 0, 0, 0, 0, 0, 0,
-         0, 0, 0, 0, 0, 0, 0, 0,
-         1, 0, 0, 1, 1, 0, 0, 1,
-         1, 0, 0, 1, 1, 0, 0, 1,
-         0, 0, 0, 0, 0, 0, 0, 0,
-         0, 0, 0, 0, 0, 0, 0, 0,
-         1, 0, 0, 1, 1, 0, 0, 1];
-    let mut back = Vec::new();
-    enhance_3x3(&mut front, &mut back, &patterns);
-    assert_eq!(&front[..], &output[..]);
+    let (pat2x2, pat3x3) = read_patterns(".#./..#/### => #..#/..../..../#..#");
+    let input =
+        [0, 1, 0, 1, 0, 0, 0, 1, 0,
+         0, 0, 1, 1, 0, 1, 1, 0, 0,
+         1, 1, 1, 1, 1, 0, 1, 1, 1,
+         1, 1, 1, 0, 1, 1, 1, 1, 1,
+         1, 0, 0, 1, 0, 1, 0, 0, 1,
+         0, 1, 0, 0, 0, 1, 0, 1, 0,
+         0, 1, 0, 0, 0, 1, 0, 1, 0,
+         1, 0, 0, 1, 0, 1, 0, 0, 1,
+         1, 1, 1, 0, 1, 1, 1, 1, 1];
+    let expected =
+        [1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1,
+         1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1,
+         1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+         1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1];
+    let steps = 1;
+    let output = enhance(&input[..], steps, &pat2x2, &pat3x3);
+    assert_eq!(&output[..], &expected[..]);
 }
 
 fn match_pattern_2x2<'a>(input: &[u8], patterns: &'a [Pattern2x2]) -> Option<&'a [u8]> {
