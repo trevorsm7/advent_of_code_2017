@@ -4,7 +4,7 @@ use std::mem;
 use std::io::Error;
 
 type Pattern2x2 = ([u8; 4], [u8; 9]);
-type Pattern3x3 = ([u8; 9], [u8; 8], [u8; 8]);
+type Pattern3x3 = ([u8; 9], [u8; 16]);
 
 pub fn day21(args: &mut env::Args) -> Result<(), Error> {
     // Read from file in first arg or default to input.txt
@@ -76,7 +76,7 @@ fn read_patterns(input: &str) -> (Vec<Pattern2x2>, Vec<Pattern3x3>) {
             pat2x2.push(pattern);
         }
         else if count == 8 {
-            let mut pattern = ([0; 9], [0; 8], [0; 8]);
+            let mut pattern = ([0; 9], [0; 16]);
 
             // Collect a string, map chars to u8, and collect a Vec
             pattern.0.copy_from_slice(&split.clone().take(3)
@@ -85,20 +85,10 @@ fn read_patterns(input: &str) -> (Vec<Pattern2x2>, Vec<Pattern3x3>) {
                 .collect::<Vec<u8>>());
 
             // Collect a string, map chars to u8, and collect a Vec
-            let pitched = split.clone().skip(4).take(4)
+            pattern.1.copy_from_slice(&split.clone().skip(4).take(4)
                 .collect::<Vec<&str>>().concat()
                 .chars().map(|c| if c == '#' {1} else {0})
-                .collect::<Vec<u8>>();
-
-            // Map to 2x2 block linear memory
-            pattern.1[0..2].copy_from_slice(&pitched[0..2]);
-            pattern.1[4..6].copy_from_slice(&pitched[2..4]);
-            pattern.1[2..4].copy_from_slice(&pitched[4..6]);
-            pattern.1[6..8].copy_from_slice(&pitched[6..8]);
-            pattern.2[0..2].copy_from_slice(&pitched[8..10]);
-            pattern.2[4..6].copy_from_slice(&pitched[10..12]);
-            pattern.2[2..4].copy_from_slice(&pitched[12..14]);
-            pattern.2[6..8].copy_from_slice(&pitched[14..16]);
+                .collect::<Vec<u8>>());
 
             pat3x3.push(pattern);
         }
@@ -116,37 +106,50 @@ fn test_day21_read_patterns() {
         ../.# => ##./#../...\n\
         .#./..#/### => #..#/..../..../#..#";
     let (pat2x2, pat3x3) = read_patterns(&input);
-    assert_eq!(pat2x2[0], (
-        [0, 0,
-         0, 1],
-        [1, 1, 0,
-         1, 0, 0,
-         0, 0, 0]));
-    assert_eq!(pat3x3[0], (
-        [0, 1, 0,
-         0, 0, 1,
-         1, 1, 1],
-        [1, 0,
-         0, 0,
-         0, 1,
-         0, 0],
-        [0, 0,
-         1, 0,
-         0, 0,
-         0, 1]));
+    assert_eq!(pat2x2[0],
+        ([0, 0,
+          0, 1],
+         [1, 1, 0,
+          1, 0, 0,
+          0, 0, 0]));
+    assert_eq!(pat3x3[0],
+        ([0, 1, 0,
+          0, 0, 1,
+          1, 1, 1],
+         [1, 0, 0, 1,
+          0, 0, 0, 0,
+          0, 0, 0, 0,
+          1, 0, 0, 1]));
 }
 
 fn enhance_2x2<'a>(front: &'a mut Vec<u8>, back: &'a mut Vec<u8>, patterns: &[Pattern2x2]) {
     assert_eq!(front.len() % 4, 0);
-    let n = front.len() / 4;
-    back.resize(9 * n, 0);
+    let n2 = front.len() / 4;
+    back.resize(9 * n2, 0);
 
-    for i in 0..n {
-        let (f1, f2) = (i * 4, (i + 1) * 4);
-        let (b1, b2) = (i * 9, (i + 1) * 9);
-        back[b1..b2].copy_from_slice(
-            match_pattern_2x2(&front[f1..f2], patterns)
-                .expect(&format!("Unable to match pattern {:?}", &front[f1..f2])));
+    let n = (n2 as f64).sqrt() as usize;
+
+    for by in 0..n {
+        for bx in 0..n {
+            // Copy 2x2 tile into contiguous memory
+            let mut lr = [0; 4];
+            for row in 0..2 {
+                let (d1, d2) = (row * 2, (row + 1) * 2);
+                let (s1, s2) = (((by * 2 + row) * n + bx) * 2, ((by * 2 + row) * n + bx + 1) * 2);
+                lr[d1..d2].copy_from_slice(&front[s1..s2]);
+            }
+
+            // Find matching 3x3 tile
+            let hr = match_pattern_2x2(&lr[..], patterns)
+                .expect(&format!("Unable to match pattern {:?}", &lr[..]));
+            
+            // Copy 3x3 tile into non-contiguous memory
+            for row in 0..3 {
+                let (d1, d2) = (((by * 3 + row) * n + bx) * 3, ((by * 3 + row) * n + bx + 1) * 3);
+                let (s1, s2) = (row * 3, (row + 1) * 3);
+                back[d1..d2].copy_from_slice(&hr[s1..s2]);
+            }
+        }
     }
 
     // Swap front and back buffers
@@ -156,42 +159,50 @@ fn enhance_2x2<'a>(front: &'a mut Vec<u8>, back: &'a mut Vec<u8>, patterns: &[Pa
 #[test]
 fn test_day21_enhance_2x2() {
     let (patterns, _) = read_patterns("../.# => ##./#../...");
-    let mut front = vec![
-        1, 0,
-        0, 0,
-        0, 1,
-        0, 0,
-        0, 0,
-        1, 0,
-        0, 0,
-        0, 1];
+    let mut front = vec!
+        [1, 0, 0, 1,
+         0, 0, 0, 0,
+         0, 0, 0, 0,
+         1, 0, 0, 1];
+    let output =
+        [1, 1, 0, 1, 1, 0,
+         1, 0, 0, 1, 0, 0,
+         0, 0, 0, 0, 0, 0,
+         1, 1, 0, 1, 1, 0,
+         1, 0, 0, 1, 0, 0,
+         0, 0, 0, 0, 0, 0];
     let mut back = Vec::new();
     enhance_2x2(&mut front, &mut back, &patterns);
-    for i in 0..4 {
-        let (a, b) = (i * 9, (i + 1) * 9);
-        assert_eq!(
-            &front[a..b],
-            &[1, 1, 0,
-              1, 0, 0,
-              0, 0, 0]);
-    }
+    assert_eq!(&front[..], &output[..]);
 }
 
 fn enhance_3x3<'a>(front: &'a mut Vec<u8>, back: &'a mut Vec<u8>, patterns: &[Pattern3x3]) {
     assert_eq!(front.len() % 9, 0);
-    let n = front.len() / 9;
-    back.resize(16 * n, 0);
+    let n2 = front.len() / 9;
+    back.resize(16 * n2, 0);
 
-    let n2 = (n as f64).sqrt() as usize;
-    for j in 0..n2 {
-        for i in 0..n2 {
-            let (f1, f2) = ((j * n2 + i) * 9, (j * n2 + i + 1) * 9);
-            let (b1, b2) = ((j * 2 * n2 + i) * 8, (j * 2 * n2 + i + 1) * 8);
-            let (b3, b4) = (((j * 2 + 1) * n2 + i) * 8, ((j * 2 + 1) * n2 + i + 1) * 8);
-            let (ref stamp1, ref stamp2) = match_pattern_3x3(&front[f1..f2], patterns)
-                .expect(&format!("Unable to match pattern {:?}", &front[f1..f2]));
-            back[b1..b2].copy_from_slice(stamp1);
-            back[b3..b4].copy_from_slice(stamp2);
+    let n = (n2 as f64).sqrt() as usize;
+
+    for by in 0..n {
+        for bx in 0..n {
+            // Copy 3x3 tile into contiguous memory
+            let mut lr = [0; 9];
+            for row in 0..3 {
+                let (d1, d2) = (row * 3, (row + 1) * 3);
+                let (s1, s2) = (((by * 3 + row) * n + bx) * 3, ((by * 3 + row) * n + bx + 1) * 3);
+                lr[d1..d2].copy_from_slice(&front[s1..s2]);
+            }
+
+            // Find matching 4x4 tile
+            let hr = match_pattern_3x3(&lr[..], patterns)
+                .expect(&format!("Unable to match pattern {:?}", &lr[..]));
+            
+            // Copy 4x4 tile into non-contiguous memory
+            for row in 0..4 {
+                let (d1, d2) = (((by * 4 + row) * n + bx) * 4, ((by * 4 + row) * n + bx + 1) * 4);
+                let (s1, s2) = (row * 4, (row + 1) * 4);
+                back[d1..d2].copy_from_slice(&hr[s1..s2]);
+            }
         }
     }
 
@@ -202,39 +213,25 @@ fn enhance_3x3<'a>(front: &'a mut Vec<u8>, back: &'a mut Vec<u8>, patterns: &[Pa
 #[test]
 fn test_day21_enhance_3x3() {
     let (_, patterns) = read_patterns(".#./..#/### => #..#/..../..../#..#");
-    let mut front = vec![
-        0, 1, 0,
-        0, 0, 1,
-        1, 1, 1,
-        1, 0, 0,
-        1, 0, 1,
-        1, 1, 0,
-        1, 1, 1,
-        1, 0, 0,
-        0, 1, 0,
-        0, 1, 1,
-        1, 0, 1,
-        0, 0, 1];
+    let mut front = vec!
+        [0, 1, 0, 1, 0, 0,
+         0, 0, 1, 1, 0, 1,
+         1, 1, 1, 1, 1, 0,
+         1, 1, 1, 0, 1, 1,
+         1, 0, 0, 1, 0, 1,
+         0, 1, 0, 0, 0, 1];
+    let output =
+        [1, 0, 0, 1, 1, 0, 0, 1,
+         0, 0, 0, 0, 0, 0, 0, 0,
+         0, 0, 0, 0, 0, 0, 0, 0,
+         1, 0, 0, 1, 1, 0, 0, 1,
+         1, 0, 0, 1, 1, 0, 0, 1,
+         0, 0, 0, 0, 0, 0, 0, 0,
+         0, 0, 0, 0, 0, 0, 0, 0,
+         1, 0, 0, 1, 1, 0, 0, 1];
     let mut back = Vec::new();
     enhance_3x3(&mut front, &mut back, &patterns);
-    for j in 0..2 {
-        for i in 0..2 {
-            let (a, b) = (((j * 4) + i) * 8, ((j * 4) + i + 1) * 8);
-            assert_eq!(
-                &front[a..b],
-                &[1, 0,
-                  0, 0,
-                  0, 1,
-                  0, 0]);
-            let (a, b) = (((j * 4) + i + 2) * 8, ((j * 4) + i + 3) * 8);
-            assert_eq!(
-                &front[a..b],
-                &[0, 0,
-                  1, 0,
-                  0, 0,
-                  0, 1]);
-        }
-    }
+    assert_eq!(&front[..], &output[..]);
 }
 
 fn match_pattern_2x2<'a>(input: &[u8], patterns: &'a [Pattern2x2]) -> Option<&'a [u8]> {
@@ -272,15 +269,15 @@ fn test_day21_match_pattern_2x2() {
     assert_eq!(match_pattern_2x2(input, &patterns), None);
 }
 
-fn match_pattern_3x3<'a>(input: &[u8], patterns: &'a [Pattern3x3]) -> Option<(&'a [u8], &'a [u8])> {
+fn match_pattern_3x3<'a>(input: &[u8], patterns: &'a [Pattern3x3]) -> Option<(&'a [u8])> {
     // Pre-compute all 8 transforms of the input
     let transforms = transform_3x3(input);
 
     // Try to match each transform with each pattern
-    for (ref lr, ref hr1, ref hr2) in patterns {
+    for (ref lr, ref hr) in patterns {
         for &source in &transforms {
             if *lr == source {
-                return Some((hr1, hr2));
+                return Some(hr);
             }
         }
     }
@@ -297,15 +294,11 @@ fn test_day21_match_pattern_3x3() {
          1, 0, 1,
          1, 1, 0];
     let output =
-        [1, 0,
-         0, 0,
-         0, 1,
-         0, 0,
-         0, 0,
-         1, 0,
-         0, 0,
-         0, 1];
-    assert_eq!(match_pattern_3x3(&input, &patterns).unwrap(), (&output[..8], &output[8..]));
+        [1, 0, 0, 1,
+         0, 0, 0, 0,
+         0, 0, 0, 0,
+         1, 0, 0, 1];
+    assert_eq!(match_pattern_3x3(&input, &patterns).unwrap(), &output);
 
     let input =
         &[1, 1, 0,
