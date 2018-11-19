@@ -16,7 +16,7 @@ pub fn day22(args: &mut env::Args) -> Result<(), Error> {
     };
 
     println!("Part 1: {}", part1(&input, 10000));
-    //println!("Part 2: {}", part2(&input));
+    println!("Part 2: {}", part2(&input, 10000000));
 
     Ok(())
 }
@@ -58,6 +58,54 @@ fn test_day22_part1() {
     assert_eq!(part1(&input, 7), 5);
     assert_eq!(part1(&input, 70), 41);
     assert_eq!(part1(&input, 10000), 5587);
+}
+
+fn part2(input: &str, bursts: usize) -> usize {
+    let mut weakened = Grid::new();
+    let mut infected = Grid::from_string(input);
+    let mut flagged = Grid::new();
+
+    let mut carrier = (0, 0);
+    let mut heading = 0;
+
+    let mut infections = 0;
+    for _ in 0..bursts {
+        if weakened.remove(&carrier) {
+            // Do not turn, infect node
+            infected.insert(carrier);
+            infections += 1;
+        }
+        else if infected.remove(&carrier) {
+            // Turn right, flag node
+            heading = (heading + 1) % 4;
+            flagged.insert(carrier);
+        }
+        else if flagged.remove(&carrier) {
+            // Reverse direction, clean node
+            heading = (heading + 2) % 4;
+        }
+        else {
+            // Turn left, weaken node
+            heading = (heading + 3) % 4;
+            weakened.insert(carrier);
+        }
+
+        // Advance carrier one step
+        carrier.0 += HEADINGS[heading].0;
+        carrier.1 += HEADINGS[heading].1;
+    }
+
+    infections
+}
+
+#[test]
+fn test_day22_part2() {
+    let input = "\
+        ..#\n\
+        #..\n\
+        ...";
+    assert_eq!(part2(&input, 100), 26);
+    assert_eq!(part2(&input, 10000000), 2511944);
 }
 
 trait GridExt {
