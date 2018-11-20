@@ -8,16 +8,16 @@ extern crate crossbeam;
 
 // ==== Operands and registers ====
 
-type Reg = u8;
-type Int = i64;
+pub(crate) type Reg = u8;
+pub(crate) type Int = i64;
 
-#[derive(Copy, Clone, PartialEq)]
-enum Op {
+#[derive(Copy, Clone, PartialEq, Debug)]
+pub(crate) enum Op {
     Reg(Reg),
     Int(Int),
 }
 
-fn parse_op<'a, I>(tokens: &mut I) -> Result<Op, Error>
+pub(crate) fn parse_op<'a, I>(tokens: &mut I) -> Result<Op, Error>
     where I: Iterator<Item = &'a str> {
 
     // Take a token
@@ -42,7 +42,7 @@ fn parse_op<'a, I>(tokens: &mut I) -> Result<Op, Error>
     Err(Error::new(ErrorKind::InvalidData, format!("Expected operand, found {}", token)))
 }
 
-fn parse_reg<'a, I>(tokens: &mut I) -> Result<Reg, Error>
+pub(crate) fn parse_reg<'a, I>(tokens: &mut I) -> Result<Reg, Error>
     where I: Iterator<Item = &'a str> {
 
     // Parse an operand, expecting a register
