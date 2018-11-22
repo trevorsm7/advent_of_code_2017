@@ -27,7 +27,7 @@ pub fn day23(args: &mut env::Args) -> Result<(), Error> {
     };
 
     println!("Part 1: {}", part1(&input));
-    //println!("Part 2: {}", part2(&input));
+    println!("Part 2: {}", part2());
 
     Ok(())
 }
@@ -37,6 +37,51 @@ fn part1(input: &str) -> u32 {
     let mut machine = Machine::new();
     machine.run(&program);
     machine.mul_count
+}
+
+fn part2() -> i64 {
+    // Decompile the given assembly into Rust
+    let b = 57 * 100 + 100000;
+    let c = b + 17000;
+
+    // Loop from b to c, counting non-primes
+    let mut h = 0;
+    for n in (b..=c).step_by(17) {
+        if !is_prime(n) {
+            h += 1;
+        }
+    }
+
+    h
+}
+
+fn is_prime(n: i64) -> bool {
+    let b = (n as f64).sqrt().floor() as i64;
+
+    // Replace the given algorithm with a more efficient one
+    for a in 2..=b {
+        if n % a == 0 {
+            return false;
+        }
+    }
+
+    true
+}
+
+#[test]
+fn test_day23_is_prime() {
+    assert_eq!(is_prime(2), true);
+    assert_eq!(is_prime(3), true);
+    assert_eq!(is_prime(4), false);
+    assert_eq!(is_prime(5), true);
+    assert_eq!(is_prime(6), false);
+    assert_eq!(is_prime(7), true);
+    assert_eq!(is_prime(8), false);
+    assert_eq!(is_prime(9), false);
+    assert_eq!(is_prime(10), false);
+    assert_eq!(is_prime(11), true);
+    assert_eq!(is_prime(12), false);
+    assert_eq!(is_prime(13), true);
 }
 
 fn parse_program(input: &str) -> Result<Program, Error> {
