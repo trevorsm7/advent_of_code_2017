@@ -23,6 +23,12 @@ struct Next {
     output: Port,
 }
 
+struct Score {
+    max_strength: Port,
+    longest_strength: Port,
+    longest_length: usize,
+}
+
 pub fn day24(args: &mut env::Args) -> Result<(), Error> {
     // Read from file in first arg or default to input.txt
     let input = {
@@ -30,19 +36,19 @@ pub fn day24(args: &mut env::Args) -> Result<(), Error> {
         fs::read_to_string(name)?
     };
 
-    println!("Part 1: {}", part1(&input));
-    //println!("Part 2: {}", part2(&input));
+    let Score { max_strength, longest_strength, .. } = run(&input);
+    println!("Part 1: {}, Part 2: {}", max_strength, longest_strength);
 
     Ok(())
 }
 
-fn part1(input: &str) -> Port {
+fn run(input: &str) -> Score {
     // Read input and build a lookup table
     let components = read_components(input);
     let lookup = build_lookup(&components);
 
     // Keep track of max score, visited item stack, pending item stack, and next item
-    let mut max_score = 0;
+    let mut score = Score::new();
     let mut visited = Visited::new();
     let mut pending = Pending::new();
     let mut next = Next::new();
@@ -53,11 +59,11 @@ fn part1(input: &str) -> Port {
 
         // Tally-up the strength score whenever we run out of items
         if !found {
-            update_score(&mut max_score, &mut visited);
+            update_score(&mut score, &mut visited);
         }
 
         // If we've tried everything, return the max score
-        if pending.indices.is_empty() { return max_score }
+        if pending.indices.is_empty() { return score }
 
         // Grab an item off the pending stack
         let (index, parent, input) = pending.pop();
@@ -76,7 +82,7 @@ fn part1(input: &str) -> Port {
 }
 
 #[test]
-fn test_day24_part1() {
+fn test_day24_run() {
     let input = "\
         0/2\n\
         2/2\n\
@@ -86,12 +92,16 @@ fn test_day24_part1() {
         0/1\n\
         10/1\n\
         9/10\n";
-    assert_eq!(part1(&input), 31);
+    let Score { max_strength, longest_strength, longest_length } = run(&input);
+    assert_eq!(max_strength, 31);
+    assert_eq!(longest_strength, 19);
+    assert_eq!(longest_length, 4);
 }
 
 fn find_component(lookup: &PortLookup, visited: &mut Visited, pending: &mut Pending, next: &mut Next) -> bool {
     let mut found = false;
 
+    // Loop over each matching component
     if let Some(components) = lookup.get(&next.output) {
         for index in components.iter().cloned() {
             // Skip items already on the visited stack
@@ -106,13 +116,29 @@ fn find_component(lookup: &PortLookup, visited: &mut Visited, pending: &mut Pend
     found
 }
 
-fn update_score(max_score: &mut Port, visited: &mut Visited) {
-    // Score of (0,1)(1,2) is (0 + 1) + (1 + 2) -> (1 + 2) * 2 - 2
-    // So sum the outputs, multiply by 2, and subtract the last one
+fn update_score(score: &mut Score, visited: &mut Visited) {
     if let Some(&last) = visited.outputs.last() {
+        // Score of (0,1)(1,2) is (0 + 1) + (1 + 2) -> (1 + 2) * 2 - 2
+        // So sum the outputs, multiply by 2, and subtract the last one
         let sum = visited.outputs.iter().cloned().sum::<Port>();
-        let score = sum * 2 - last;
-        if score > *max_score { *max_score = score }
+        let strength = sum * 2 - last;
+
+        // Record the max score
+        if strength > score.max_strength {
+            score.max_strength = strength;
+        }
+
+        // Record the score of the longest bridge
+        let len = visited.outputs.len();
+        if len > score.longest_length {
+            score.longest_length = len;
+            score.longest_strength = strength;
+        }
+        // Break ties by largest score
+        else if len == score.longest_length
+            && strength > score.longest_strength {
+            score.longest_strength = strength;
+        }
     }
 }
 
@@ -132,6 +158,7 @@ fn unwind_visited(visited: &mut Visited, top: usize) {
 fn build_lookup(components: &Vec<Component>) -> PortLookup {
     let mut lookup = HashMap::new();
 
+    // For each port of each component
     for i in 0..components.len() {
         for e in components[i].iter().cloned() {
             // Create an empty vec if not present
@@ -233,5 +260,14 @@ impl Next {
         let parent = usize::MAX;
         let output = 0;
         Self { parent, output }
+    }
+}
+
+impl Score {
+    fn new() -> Self {
+        let max_strength = 0;
+        let longest_strength = 0;
+        let longest_length = 0;
+        Self { max_strength, longest_strength, longest_length }
     }
 }
