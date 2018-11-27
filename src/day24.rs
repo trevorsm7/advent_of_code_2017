@@ -5,6 +5,23 @@ use std::collections::HashMap;
 
 type Port = u32;
 type Component = [Port; 2];
+type PortLookup = HashMap<Port, Vec<usize>>;
+
+struct Visited {
+    indices: Vec<usize>,
+    outputs: Vec<Port>,
+}
+
+struct Pending {
+    indices: Vec<usize>,
+    parents: Vec<usize>,
+    inputs: Vec<Port>,
+}
+
+struct Next {
+    parent: usize,
+    output: Port,
+}
 
 pub fn day24(args: &mut env::Args) -> Result<(), Error> {
     // Read from file in first arg or default to input.txt
@@ -20,76 +37,42 @@ pub fn day24(args: &mut env::Args) -> Result<(), Error> {
 }
 
 fn part1(input: &str) -> Port {
+    // Read input and build a lookup table
     let components = read_components(input);
-
-    // Build a lookup map from pins to component index
     let lookup = build_lookup(&components);
 
+    // Keep track of max score, visited item stack, pending item stack, and next item
     let mut max_score = 0;
+    let mut visited = Visited::new();
+    let mut pending = Pending::new();
+    let mut next = Next::new();
 
-    let mut visited_indices: Vec<usize> = Vec::new();
-    let mut visited_outputs: Vec<Port> = Vec::new();
-
-    let mut pending_indices: Vec<usize> = Vec::new();
-    let mut pending_parents: Vec<usize> = Vec::new();
-    let mut pending_inputs: Vec<Port> = Vec::new();
-
-    let mut next_parent = usize::MAX;
-    let mut next_output = 0;
     loop {
         // Find all components matching the input
-        let mut found = false;
-        if let Some(components) = lookup.get(&next_output) {
-            for index in components.iter().cloned() {
-                if visited_indices.contains(&index) { continue }
+        let found = find_component(&lookup, &mut visited, &mut pending, &mut next);
 
-                // Add them on top of the pending stack
-                pending_indices.push(index);
-                pending_parents.push(next_parent);
-                pending_inputs.push(next_output);
-                found = true;
-            }
-        }
-
+        // Tally-up the strength score whenever we run out of items
         if !found {
-            // Tally-up the strength score before unwinding
-            if let Some(&last) = visited_outputs.last() {
-                let sum = visited_outputs.iter().cloned().sum::<Port>();
-                // Score of (0,1)(1,2) is (0 + 1) + (1 + 2) -> (1 + 2) * 2 - 2
-                let score = sum * 2 - last;
-                if score > max_score { max_score = score }
-                //println!("Score {}", score);
-            }
+            update_score(&mut max_score, &mut visited);
         }
 
-        // If any components left, get index and parent
-        if pending_indices.is_empty() { break }
-        let index = pending_indices.pop().unwrap();
-        let parent = pending_parents.pop().unwrap();
-        let input = pending_inputs.pop().unwrap();
+        // If we've tried everything, return the max score
+        if pending.indices.is_empty() { return max_score }
 
-        // Find the position of parent on the visited stack
-        if let Some(pos) = visited_indices.iter().cloned().position(|x| x == parent) {
-            // Clear visited stack after parent
-            //println!("Push ({:?}) at {}", components[index], pos + 1);
-            visited_indices.resize(pos + 1, 0);
-            visited_outputs.resize(pos + 1, 0);
-        }
-        else {
-            // Clear visited stack up to root
-            //println!("Push ({:?}) at 0", components[index]);
-            visited_indices.clear();
-            visited_outputs.clear();
-        }
+        // Grab an item off the pending stack
+        let (index, parent, input) = pending.pop();
 
-        next_parent = index;
-        let comp = components[index];
-        next_output = if input == comp[0] { comp[1] } else { comp[0] };
-        visited_indices.push(next_parent);
-        visited_outputs.push(next_output);
+        // Unwind the visited stack to the parent
+        unwind_visited(&mut visited, parent);
+
+        // Update the next state
+        next.parent = index;
+        let [port1, port2] = components[index];
+        next.output = if input == port2 { port1 } else { port2 };
+
+        // Add the item to the visited stack
+        visited.push(next.parent, next.output);
     }
-
-    max_score
 }
 
 #[test]
@@ -106,7 +89,47 @@ fn test_day24_part1() {
     assert_eq!(part1(&input), 31);
 }
 
-fn build_lookup(components: &Vec<Component>) -> HashMap<Port, Vec<usize>> {
+fn find_component(lookup: &PortLookup, visited: &mut Visited, pending: &mut Pending, next: &mut Next) -> bool {
+    let mut found = false;
+
+    if let Some(components) = lookup.get(&next.output) {
+        for index in components.iter().cloned() {
+            // Skip items already on the visited stack
+            if visited.indices.contains(&index) { continue }
+
+            // Add them on top of the pending stack
+            pending.push(index, next.parent, next.output);
+            found = true;
+        }
+    }
+
+    found
+}
+
+fn update_score(max_score: &mut Port, visited: &mut Visited) {
+    // Score of (0,1)(1,2) is (0 + 1) + (1 + 2) -> (1 + 2) * 2 - 2
+    // So sum the outputs, multiply by 2, and subtract the last one
+    if let Some(&last) = visited.outputs.last() {
+        let sum = visited.outputs.iter().cloned().sum::<Port>();
+        let score = sum * 2 - last;
+        if score > *max_score { *max_score = score }
+    }
+}
+
+fn unwind_visited(visited: &mut Visited, top: usize) {
+    if let Some(pos) = visited.indices.iter().cloned().position(|x| x == top) {
+        // Clear visited stack after top
+        visited.indices.resize(pos + 1, 0);
+        visited.outputs.resize(pos + 1, 0);
+    }
+    else {
+        // Clear visited stack completely
+        visited.indices.clear();
+        visited.outputs.clear();
+    }
+}
+
+fn build_lookup(components: &Vec<Component>) -> PortLookup {
     let mut lookup = HashMap::new();
 
     for i in 0..components.len() {
@@ -141,13 +164,16 @@ fn test_day24_build_lookup() {
 }
 
 fn read_components(input: &str) -> Vec<Component> {
+    // For each line
     input.trim().lines()
         .map(|line| {
-            let mut it = line.split('/');
+            // Parse "a/b"
+            let mut it = line.trim().split('/');
             let a = it.next().unwrap().parse().unwrap();
             let b = it.next().unwrap().parse().unwrap();
             [a, b]
         })
+        // And collect the results
         .collect::<Vec<Component>>()
 }
 
@@ -159,4 +185,53 @@ fn test_day24_read_components() {
         2/4\n";
     assert_eq!(&read_components(&input),
         &[[0, 2], [1, 3], [2, 4]]);
+}
+
+impl Visited {
+    fn new() -> Self {
+        let indices = Vec::new();
+        let outputs = Vec::new();
+        Self { indices, outputs }
+    }
+
+    fn push(&mut self, index: usize, output: Port) {
+        self.indices.push(index);
+        self.outputs.push(output);
+    }
+
+    /*fn pop(&mut self) -> (usize, Port) {
+        let index = self.indices.pop().unwrap();
+        let output = self.outputs.pop().unwrap();
+        (index, output)
+    }*/
+}
+
+impl Pending {
+    fn new() -> Self {
+        let indices = Vec::new();
+        let parents = Vec::new();
+        let inputs = Vec::new();
+        Self { indices, parents, inputs }
+    }
+
+    fn push(&mut self, index: usize, parent: usize, input: Port) {
+        self.indices.push(index);
+        self.parents.push(parent);
+        self.inputs.push(input);
+    }
+
+    fn pop(&mut self) -> (usize, usize, Port) {
+        let index = self.indices.pop().unwrap();
+        let parent = self.parents.pop().unwrap();
+        let input = self.inputs.pop().unwrap();
+        (index, parent, input)
+    }
+}
+
+impl Next {
+    fn new() -> Self {
+        let parent = usize::MAX;
+        let output = 0;
+        Self { parent, output }
+    }
 }
