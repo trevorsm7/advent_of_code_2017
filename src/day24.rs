@@ -1,8 +1,9 @@
+use std::usize;
 use std::{fs, env};
 use std::io::Error;
 use std::collections::HashMap;
 
-type Port = u16;
+type Port = u32;
 type Component = [Port; 2];
 
 pub fn day24(args: &mut env::Args) -> Result<(), Error> {
@@ -18,24 +19,77 @@ pub fn day24(args: &mut env::Args) -> Result<(), Error> {
     Ok(())
 }
 
-fn part1(input: &str) -> u32 {
+fn part1(input: &str) -> Port {
     let components = read_components(input);
 
     // Build a lookup map from pins to component index
     let lookup = build_lookup(&components);
 
-    let mut strength = 0;
-    let mut max_strength = 0;
+    let mut max_score = 0;
 
-    /*let mut visited_indices = Vec::new();
-    let mut visited_outputs = Vec::new();
+    let mut visited_indices: Vec<usize> = Vec::new();
+    let mut visited_outputs: Vec<Port> = Vec::new();
 
-    let mut pending_indices = Vec::new();
-    let mut pending_parents = Vec::new();*/
+    let mut pending_indices: Vec<usize> = Vec::new();
+    let mut pending_parents: Vec<usize> = Vec::new();
+    let mut pending_inputs: Vec<Port> = Vec::new();
 
+    let mut next_parent = usize::MAX;
+    let mut next_output = 0;
+    loop {
+        // Find all components matching the input
+        let mut found = false;
+        if let Some(components) = lookup.get(&next_output) {
+            for index in components.iter().cloned() {
+                if visited_indices.contains(&index) { continue }
 
+                // Add them on top of the pending stack
+                pending_indices.push(index);
+                pending_parents.push(next_parent);
+                pending_inputs.push(next_output);
+                found = true;
+            }
+        }
 
-    max_strength
+        if !found {
+            // Tally-up the strength score before unwinding
+            if let Some(&last) = visited_outputs.last() {
+                let sum = visited_outputs.iter().cloned().sum::<Port>();
+                // Score of (0,1)(1,2) is (0 + 1) + (1 + 2) -> (1 + 2) * 2 - 2
+                let score = sum * 2 - last;
+                if score > max_score { max_score = score }
+                //println!("Score {}", score);
+            }
+        }
+
+        // If any components left, get index and parent
+        if pending_indices.is_empty() { break }
+        let index = pending_indices.pop().unwrap();
+        let parent = pending_parents.pop().unwrap();
+        let input = pending_inputs.pop().unwrap();
+
+        // Find the position of parent on the visited stack
+        if let Some(pos) = visited_indices.iter().cloned().position(|x| x == parent) {
+            // Clear visited stack after parent
+            //println!("Push ({:?}) at {}", components[index], pos + 1);
+            visited_indices.resize(pos + 1, 0);
+            visited_outputs.resize(pos + 1, 0);
+        }
+        else {
+            // Clear visited stack up to root
+            //println!("Push ({:?}) at 0", components[index]);
+            visited_indices.clear();
+            visited_outputs.clear();
+        }
+
+        next_parent = index;
+        let comp = components[index];
+        next_output = if input == comp[0] { comp[1] } else { comp[0] };
+        visited_indices.push(next_parent);
+        visited_outputs.push(next_output);
+    }
+
+    max_score
 }
 
 #[test]
